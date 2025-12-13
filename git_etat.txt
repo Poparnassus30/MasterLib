@@ -1,0 +1,23 @@
+### date
+ven. 12 déc. 2025 23:27:22 CET
+
+### pwd
+/home/poparnassus/github/MasterLib
+
+### git top-level
+/home/poparnassus/github/MasterLib
+
+### status
+## dev
+?? git_etat.txt
+
+### branches
+* dev    d484bfc Push v0 de la structure phase de push non terminé
+  master d484bfc Push v0 de la structure phase de push non terminé
+
+### remotes
+
+### last commits
+d484bfc Push v0 de la structure phase de push non terminé
+
+### nested .git (si tu as fait un git init au mauvais endroit)
