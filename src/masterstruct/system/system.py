@@ -14,7 +14,7 @@ import psutil
 
 
 from configparser import ConfigParser
-from pynput import keyboard
+
 from typing import Callable
 
 from masterstruct.system.system_manager_subprocess import ManagerSubprocess
@@ -23,11 +23,14 @@ from masterstruct.system.system_manager_thread import ManagerThread
 from masterstruct.system.system_manager_config import ManagerConfig
 
 class System:
-    def __init__(self, base_path: str = None) -> None:
-        #1. init des variables environnements
+    def __init__(self, base_path: str = None, app_name: str = None, paths=None, shutdown_cb=None) -> None:
+        self.shutdown_cb = shutdown_cb
+        #1. initialise les attributs de base
+        self.app_name = app_name or "App"
+        self.paths = paths
         if base_path is None:
-            base_path = os.getcwd()  # fallback sûr
-        self.base_path = base_path     
+            base_path = str(self.paths.app_root) if self.paths else os.getcwd()
+        self.base_path = base_path
         
         #2. initialise le logger
         self.logger = self.setup_logger()
@@ -56,7 +59,16 @@ class System:
         self.running = True
         #Initialisation du système terminé
         self.logger.info("🔧 Noyau - Initialisation...")
-    
+
+    def request_shutdown(self, reason: str = "requested"):
+        self.logger.info(f"🛑 Shutdown demandé: {reason}")
+        if callable(self.shutdown_cb):
+            self.shutdown_cb(reason)
+        else:
+            # fallback si pas branché (ne crash pas)
+            self.logger.warning("shutdown_cb non défini -> arrêt local clavier seulement")
+            self.en_cours_clavier = False
+
     
     def chemin_absolu(self, element: str) -> str:
         return self.config_manager.chemin_absolu(element)
@@ -64,87 +76,122 @@ class System:
     ##########################################################################
     #GESTION DU LOGGER
     def setup_logger(self) -> logging.Logger:
-        logger = logging.getLogger("MasterApp")
+        logger = logging.getLogger(self.app_name)
         logger.setLevel(logging.INFO)
-        # Vérifie s’il n’a pas déjà des handlers pour éviter les doublons
-        if not logger.handlers:
-            formatter = logging.Formatter("[%(asctime)s] %(levelname)s - %(message)s")
-            # Handler fichier
-            log_dir = os.path.join(os.path.dirname(__file__), "..", "logs")
+
+        # évite doublons si ré-init
+        if logger.handlers:
+            return logger
+
+        formatter = logging.Formatter("[%(asctime)s] %(levelname)s - %(message)s")
+
+        # console
+        sh = logging.StreamHandler()
+        sh.setFormatter(formatter)
+        logger.addHandler(sh)
+
+        # fichier
+        if self.paths:
+            log_file = str(self.paths.log_file)
+            os.makedirs(os.path.dirname(log_file), exist_ok=True)
+        else:
+            log_dir = os.path.join(self.base_path, "data", "logs")
             os.makedirs(log_dir, exist_ok=True)
-            log_file = os.path.join(log_dir, "MasterApp.log")
-            file_handler = logging.FileHandler(log_file)
-            file_handler.setFormatter(formatter)
-            logger.addHandler(file_handler)
+            log_file = os.path.join(log_dir, f"{self.app_name}.log")
+
+        fh = logging.FileHandler(log_file, encoding="utf-8")
+        fh.setFormatter(formatter)
+        logger.addHandler(fh)
+
+        logger.propagate = False
         return logger
     
             
     ###########################################################################  
     # GESTION DU  CLAVIER
     def lancer_ecoute_clavier(self):
-        self.logger.info(" Détection clavier activé")
+        self.logger.info("⌨️ Détection clavier activée (pynput -> fallback TTY)")
 
-        pressed_keys = set()
-
-        def on_press(key):
-            # Log toutes les touches pressées (optionnel pour debug)
-            #self.logger.debug(f"Touche pressée : {key}")
-
-            pressed_keys.add(key)
-
-            if (keyboard.Key.ctrl_l in pressed_keys or keyboard.Key.ctrl_r in pressed_keys):
-                if key == keyboard.KeyCode.from_char('m'):
-                    self.logger.info("🎹 CTRL+M détecté → Lancement du sélecteur utilisateur.")
-                    #self.demarrer_selecteur_utilisateur()
-                if key == keyboard.KeyCode.from_char('q'):
-                    self.logger.info(' CTRL+P détecté → Fermeture de MasterApp')
-                    self.noyau.stop()
-                """
-                elif key == keyboard.KeyCode.from_char('k'):
-                    
-                    self.logger.info("🎹 CTRL+N détecté → Lancement de la console de management.")
-                    # Détection automatique du terminal
-                    terminal_cmd = shutil.which("gnome-terminal") or shutil.which("x-terminal-emulator")
-                    chemin_console = self.chemin_absolu("console_management")
-
-                    # Lancement si terminal dispo
-                    if terminal_cmd:
-                        self.logger.warning(f"🛠️ TEST : chemin_console = {chemin_console}")
-                        self.logger.warning(f"🛠️ TEST : fichier existe ? {os.path.exists(chemin_console)}")
-
-                        subprocess.Popen([
-                            terminal_cmd,
-                            '--',
-                            'bash', '-c',
-                            f' {self.python_path} "{chemin_console}"; exec bash'
-                        ])
-                        self.logger.info("📟 Manager lancé dans un terminal.")
-                        self.logger.info(f"🧪 Commande exécutée : {terminal_cmd} -- bash -c '{self.python_path} {chemin_console}; exec bash'")
-                        self.logger.info(f"[DEBUG] Python utilisé : {self.python_path}")
-                        self.logger.info(f"[DEBUG] Script console_management : {chemin_console}")
-                        self.logger.info(f"[DEBUG] Commande bash : {self.python_path} \"{chemin_console}\"; exec bash")
-                    else:
-                        self.logger.error("❌ Aucun terminal graphique trouvé pour lancer le manager.")
-                    """
-                    
-        def on_release(key):
-            if key in pressed_keys:
-                pressed_keys.remove(key)
-
+        # --- Mode 1 : pynput (global hotkeys) ---
         try:
+            from pynput import keyboard
+            pressed_keys = set()
+
+            def on_press(key):
+                pressed_keys.add(key)
+
+                if (keyboard.Key.ctrl_l in pressed_keys or keyboard.Key.ctrl_r in pressed_keys):
+                    if key == keyboard.KeyCode.from_char('m'):
+                        self.logger.info("🎹 CTRL+M détecté → (todo) sélecteur utilisateur.")
+                    elif key == keyboard.KeyCode.from_char('q'):
+                        self.logger.info("🎹 CTRL+Q détecté → shutdown")
+                        if hasattr(self, "noyau") and self.noyau:
+                            self.request_shutdown("CTRL+Q")
+                        else:
+                            self.en_cours_clavier = False
+
+            def on_release(key):
+                pressed_keys.discard(key)
+
             listener = keyboard.Listener(on_press=on_press, on_release=on_release)
             listener.start()
 
-            self.logger.info("⌨️ Surveillance clavier active")
+            self.logger.info("⌨️ Surveillance clavier active (pynput)")
             while self.en_cours_clavier:
                 time.sleep(0.5)
 
             listener.stop()
-            self.logger.info("⌨️ Écoute clavier arrêtée.")
-        except Exception as e:
-            self.logger.error(f"❌ Erreur d’écoute clavier : {e}")        
+            self.logger.info("⌨️ Écoute clavier arrêtée (pynput)")
+            return
 
-    
+        except Exception as e:
+            self.logger.warning(f"⚠️ pynput indisponible/KO ({e}) -> fallback TTY")
+
+        # --- Mode 2 : fallback TTY (CTRL+Q) ---
+        self._ecoute_clavier_tty()
+
+
+    def _ecoute_clavier_tty(self):
+        """
+        Fallback console: lit stdin en mode raw, détecte CTRL+Q.
+        Fonctionne en SSH/Termux/headless. Doit être lancée en thread.
+        """
+        if not sys.stdin.isatty():
+            self.logger.warning("stdin n'est pas un TTY -> pas de fallback clavier possible")
+            return
+
+        fd = sys.stdin.fileno()
+        old = termios.tcgetattr(fd)
+
+        CTRL_Q = 17  # ASCII DC1
+
+        try:
+            tty.setraw(fd)
+            self.logger.info("⌨️ Surveillance clavier active (TTY) : CTRL+Q pour quitter")
+
+            while self.en_cours_clavier:
+                r, _, _ = select.select([fd], [], [], 0.25)  # timeout pour vérifier le flag
+                if not r:
+                    continue
+
+                b = sys.stdin.buffer.read(1)
+                if not b:
+                    continue
+
+                if b[0] == CTRL_Q:
+                    self.logger.info("🎹 CTRL+Q détecté (TTY) → shutdown")
+                    if hasattr(self, "noyau") and self.noyau:
+                        self.request_shutdown("CTRL+Q")
+                    else:
+                        self.en_cours_clavier = False
+                    break
+
+        except Exception as e:
+            self.logger.error(f"❌ Erreur fallback clavier TTY : {e}")
+
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old)
+            self.logger.info("⌨️ Écoute clavier arrêtée (TTY)")    
     
     ##########################################################################
     # INSTALL DEPENDANCES 

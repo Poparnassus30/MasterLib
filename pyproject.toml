@@ -3,12 +3,20 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "master"
+name = "masterlib"
 version = "0.1.0"
 requires-python = ">=3.10"
+dependencies = [
+  "psutil","rich"
+]
+
+[project.optional-dependencies]
+keyboard = ["pynput"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+

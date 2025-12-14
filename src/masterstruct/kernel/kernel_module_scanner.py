@@ -121,7 +121,7 @@ class ModuleScanner:
                 self.system.logger.debug(traceback.format_exc())
         
     def enregistrer_module_dans_registre(self, module: str):
-        from system.system_registre import ModuleEntry
+        from masterstruct.system.system_registre import ModuleEntry
 
         # Vérifie si une entrée existe déjà
         deja_enregistre = any(

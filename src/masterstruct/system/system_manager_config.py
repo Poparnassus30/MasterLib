@@ -30,22 +30,6 @@ class ManagerConfig:
 
         self.logger.info(f"🔧 System init  base_path : {self.base_path}")
     
-    def prompt_ia(self):
-        return """
-        📦 Classe : ManagerConfig
-        Rôle :      Gere la partie configuration de la class System, cela permet de centralisé.
-        Fonction :  garde self.config (de configparser) à jour et maintient la configuration à jour
-        Lancement:  initialisé par System: et utilisé au besoin dans MasterApp
-        Instructions IA :
-        - Ne jamais désactiver sauf arrêt de MasterApp.
-        - Logger proprement toutes les erreurs.
-        - self.config se met à jour à chaque fois que config.ini est modifié
-
-        Argument:
-
-        Methode :
-
-        """
     def get_python_path(self) -> str:
         venv_path = self.get("system", "venv_path", fallback="")
         return os.path.join(venv_path, "bin", "python")
@@ -178,3 +162,15 @@ class ManagerConfig:
     def chemin_module(self, nom_module):
         return os.path.abspath(os.path.join(self.base_path, "modules", f"{nom_module}.py"))
 
+    def create_bloc_config(self):
+        bloc_config_defaut = {"system": {
+            "app_path": self.base_path,
+            "venv_path": os.path.join(self.base_path, "venv")
+        }} 
+        for section, options in bloc_config_defaut.items():
+            if not self.config.has_section(section):
+                self.config.add_section(section)
+            for key, value in options.items():
+                if not self.config.has_option(section, key):
+                    self.config.set(section, key, value)
+        self.sauvegarder()

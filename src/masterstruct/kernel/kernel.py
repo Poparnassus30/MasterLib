@@ -14,10 +14,10 @@ from pathlib import Path
 #from interfaceIHM import InterfaceIHM
     
     
-from system.system import System
-from masterstruct.kernel import lancer_kernel
-from masterstruct.kernel_manager import NoyauManager
-from masterstruct.kernel_module_scanner import ModuleScanner
+from masterstruct.system.system import System
+#from masterstruct.kernel import lancer_kernel
+from masterstruct.kernel.kernel_manager import NoyauManager
+from masterstruct.kernel.kernel_module_scanner import ModuleScanner
 
 #from modules.module import ModuleBase
 
@@ -38,7 +38,7 @@ def lancer_kernel():
 
 
 #CORE INTELIGENCE
-class Noyau:
+class Kernel:
     def __init__(self) -> None:
         #Initialise le noyau avec une instance du système.
         chemin_absolu = Path(__file__).resolve().parent.parent
