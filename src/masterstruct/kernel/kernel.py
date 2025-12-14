@@ -1,27 +1,17 @@
 #!/usr/bin/env python3
-
+import logging
 import time
 import os
 import threading
 import sys
-from pathlib import Path
-
-
-#from update_manager import UpdateManager
-#from reseau_comm import NetworkNode
-#from memory_engine import MemoryEngine
-#from module import ModuleManager
-#from interfaceIHM import InterfaceIHM
-    
-    
+from pathlib import Path    
 from masterstruct.system.system import System
-#from masterstruct.kernel import lancer_kernel
 from masterstruct.kernel.kernel_manager import NoyauManager
 from masterstruct.kernel.kernel_module_scanner import ModuleScanner
 
 #from modules.module import ModuleBase
 
-
+"""
 def lancer_kernel():
 
     #print("🔍 Vérification de l'environnement Python en cours...")
@@ -35,26 +25,44 @@ def lancer_kernel():
     else:
         print("❌ Tu n'es PAS dans la virtualenv MasterApp")
         print(f"➡️  Active-la avec : source {venv_dir}/bin/activate")
-
+"""
 
 #CORE INTELIGENCE
 class Kernel:
-    def __init__(self) -> None:
-        #Initialise le noyau avec une instance du système.
-        chemin_absolu = Path(__file__).resolve().parent.parent
-        self.system = System(base_path=str(chemin_absolu))
+    def __init__(self, ctx) -> None:
+        # Initialisation du noyau avec le contexte fourni.
+        self.ctx = ctx
 
-        self.logger = self.system.logger
+        #Initialise le noyau avec une instance du système.
+        #chemin_absolu = Path(__file__).resolve().parent.parent
+        #self.system = System(base_path=str(chemin_absolu))
+        self.system = getattr(ctx, "system", None)
+        if self.system is None and isinstance(ctx, dict):
+            self.system = ctx.get("system")
+
+        if self.system is None:
+            raise RuntimeError("ctx.system manquant : runtime doit fournir System")
+
+        self.logger = getattr(self.system, "logger", logging.getLogger("Kernel"))
+
+        #Variable de status
+        self.live_mode = True
+        self.status_update_config = "None"
+        self.running = False
+
+        #self.logger = self.system.logger
         #self.config = self.system.get_config()
         #variable de debug visuel pour noyau_manager.py #False = pas de menu afficher dynamiquement
-        self.live_mode = True
+        #self.live_mode = True
 
         #Socket du noyau pour les processus enfants de MAsterApp
-        self.socket_interface = NoyauSocket(self)
+        self.socket_interface = None
+        try:
+            from masterstruct.kernel.kernel_socket import NoyauSocket
+            self.socket_interface = NoyauSocket(self)
+        except ImportError as e:
+            self.logger.error(f"❌ Impossible d’importer NoyauSocket : {e}")
         
-        #Variable de status
-        self.status_update_config ="None" #status fichier config.ini
-
         #self.uuid = self.system.get_or_create_uuid()
         #self.update_manager = None
         #self.network_node = None
