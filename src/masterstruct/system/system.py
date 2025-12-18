@@ -10,11 +10,16 @@ import time
 import uuid
 import shutil
 import traceback
-import psutil
 import pkgutil
 import select
-import tty
-import termios
+
+if os.name != "nt":
+    import tty
+    import termios
+else:
+    tty = None
+    termios = None
+
 import re
 import importlib
 
