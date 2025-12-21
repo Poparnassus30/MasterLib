@@ -6,8 +6,8 @@ import threading
 import sys
 from pathlib import Path    
 from masterstruct.system.system import System
-from masterstruct.kernel.kernel_manager import NoyauManager
-from masterstruct.kernel.kernel_module_scanner import ModuleScanner
+from masterstruct.kernel.kernel_ihm import NoyauManager
+from masterstruct.kernel.kernel_module import ModuleScanner
 
 #from modules.module import ModuleBase
 
