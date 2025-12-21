@@ -29,10 +29,10 @@ from configparser import ConfigParser
 
 from typing import Callable
 
-from masterstruct.system.system_manager_subprocess import ManagerSubprocess
-from masterstruct.system.system_registre import ManagerRegistre
-from masterstruct.system.system_manager_thread import ManagerThread
-from masterstruct.system.system_manager_config import ManagerConfig
+from masterstruct.system.system_subprocess import ManagerSubprocess
+from masterstruct.system.system_registre import (SystemEntry, KernelEntry, ConfigEntry, EntryState, DesiredState, ManagerRegistre)
+from masterstruct.system.system_thread import ManagerThread
+from masterstruct.system.system_config import ManagerConfig
 
 class System:
     def __init__(self, base_path: str = None, app_name: str = None, paths=None, shutdown_cb=None) -> None:
@@ -57,6 +57,46 @@ class System:
     
         # .initialisatoion du registre
         self.registre = ManagerRegistre(system =self)
+        try:
+            # 1) SYSTEM
+            sys_entry = SystemEntry("system")
+            sys_entry.source = self.app_name
+            sys_entry.os_name = os.name
+            sys_entry.os_version = os.uname().release if hasattr(os, "uname") else "unknown"
+            sys_entry.architecture = os.uname().machine if hasattr(os, "uname") else "unknown"
+            sys_entry.meta.update({
+                "base_path": self.base_path,
+                "python_path": self.python_path,
+            })
+            sys_entry.set_desired(DesiredState.RUNNING)
+            sys_entry.set_state(EntryState.RUNNING)
+            self.registre.ajouter(sys_entry)
+
+            # 2) KERNEL (placeholder, complété par Kernel ensuite)
+            kernel_entry = KernelEntry("kernel")
+            kernel_entry.source = self.app_name
+            kernel_entry.pid = os.getpid()
+            kernel_entry.meta.update({
+                "running": True,
+                "stopping": False
+            })
+            kernel_entry.set_desired(DesiredState.RUNNING)
+            kernel_entry.set_state(EntryState.STARTING)
+            self.registre.ajouter(kernel_entry)
+
+            # 3) CONFIG (snapshot logique, pas le contenu complet)
+            cfg_entry = ConfigEntry("config", config={})
+            cfg_entry.source = self.app_name
+            cfg_entry.meta.update({
+                "path": self.config_manager.chemin_absolu("config_ini"),
+                "status": "RAS",
+            })
+            cfg_entry.set_desired(DesiredState.RUNNING)
+            cfg_entry.set_state(EntryState.RUNNING)
+            self.registre.ajouter(cfg_entry)
+            
+        except Exception as e:
+            self.logger.error(f"❌ Impossible d'initialiser l'entrée système du registre : {e}")
 
         #. les threads
         self.threads: dict = {}

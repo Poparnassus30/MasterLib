@@ -95,10 +95,65 @@ class RegistreEntry:
 
         }
 
+# Spécialisation pour les services
+class ConfigEntry(RegistreEntry):
+    def __init__(self, name: str, config: dict):
+        super().__init__(name, type_objet="config")
+        self.config = config
+        self.timestamp = datetime.utcnow()
 
+
+    def to_dict(self):
+        data = super().to_dict()
+        data.update({
+            "config": self.config,
+            "timestamp": self.timestamp.isoformat()
+
+        })
+        return data
     
+# Spécialisation pour le kernel
+class KernelEntry(RegistreEntry):
+    def __init__(self, name: str):
+        super().__init__(name, type_objet="kernel")
+        self.pid = None
+        self.uptime = None
+        self.timestamp = datetime.utcnow()
 
-# 🎯 Spécialisation pour subprocess
+
+    def to_dict(self):
+        data = super().to_dict()
+        data.update({
+            "pid": self.pid,
+            "uptime": self.uptime,
+            "timestamp": self.timestamp.isoformat()
+
+        })
+        return data
+
+# Système d'exploitation
+class SystemEntry(RegistreEntry):
+    def __init__(self, name: str):
+        super().__init__(name, type_objet="system")
+        self.os_name = None
+        self.os_version = None
+        self.architecture = None
+        self.timestamp = datetime.utcnow()
+
+
+    def to_dict(self):
+        data = super().to_dict()
+        data.update({
+            "os_name": self.os_name,
+            "os_version": self.os_version,
+            "architecture": self.architecture,
+            "timestamp": self.timestamp.isoformat()
+
+        })
+        return data
+
+        
+# Spécialisation pour subprocess
 class SubprocessEntry(RegistreEntry):
     def __init__(self, name: str, pid: Optional[int] = None):
         super().__init__(name, type_objet="subprocess")
@@ -129,7 +184,7 @@ class SubprocessEntry(RegistreEntry):
         })
         return data
 
-# 🔁 Spécialisation pour threads
+# Spécialisation pour threads
 class ThreadEntry(RegistreEntry):
     def __init__(self, name: str):
         super().__init__(name, type_objet="thread")
@@ -168,7 +223,7 @@ class ThreadEntry(RegistreEntry):
         })
         return data
 
-# 🌐 Spécialisation pour réseau
+# Spécialisation pour réseau
 class NetworkEntry(RegistreEntry):
     def __init__(self, name: str, port: int, ip: str = "127.0.0.1"):
         super().__init__(name, type_objet="network")
@@ -207,7 +262,7 @@ class ModuleEntry(RegistreEntry):
         return data
 
 
-# 🧠 Manager global du registre
+# Manager global du registre
 class ManagerRegistre:
     def __init__(self, system = None):
         self.system = system
