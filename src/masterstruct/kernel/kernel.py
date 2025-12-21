@@ -49,6 +49,7 @@ class Kernel:
         self.live_mode = True
         self.status_update_config = "None"
         self.running = False
+        self.stopping = False
 
         #self.logger = self.system.logger
         #self.config = self.system.get_config()
@@ -104,7 +105,7 @@ class Kernel:
                     try:
                         self.system.thread_manager.run("noyau_socket", self.socket_interface.start_threadable)   
                         self.logger.warning("🛠️ Thread 'noyau_socket' inactif — redémarrage")
-                    except:
+                    except Exception as e   :
                         self.logger.error(f"❌ Impossible de relancer noyau_socket : {e}")
                 ###########################################################################
 
@@ -115,19 +116,20 @@ class Kernel:
                     try:
                         self.system.thread_manager.run("watch_config", lambda: self.system.config_manager.controle_maj_configuration(self))
                         self.logger.warning("✅ Thread 'module_scanner' relancé proprement.")
-                    except:
+                    except Exception as e   :
                         self.logger.error(f"❌ Impossible de relancer watch_config : {e}")
                 ###########################################################################
 
                 # ------------------------------------------------------------------------
                 # --CLAVIER
-                if not self.system.thread_manager.is_alive("lancer_ecoute_clavier"):
-                    self.logger.warning("🛠️ Thread 'lancer_ecoute_clavier' inactif — redémarrage")
-                    try:
-                        self.system.thread_manager.run("lancer_ecoute_clavier", self.system.lancer_ecoute_clavier)
-                        self.logger.warning("✅ Thread 'lancer_ecoute_clavier' relancé proprement.")
-                    except:
-                        self.logger.error(f"❌ Impossible de relancer lancer_ecoute_clavier : {e}")
+                if (not self.stopping) and self.system.en_cours_clavier:
+                    if not self.system.thread_manager.is_alive("lancer_ecoute_clavier"):
+                        self.logger.warning("🛠️ Thread 'lancer_ecoute_clavier' inactif — redémarrage")
+                        try:
+                            self.system.thread_manager.run("lancer_ecoute_clavier", self.system.lancer_ecoute_clavier)
+                            self.logger.warning("✅ Thread 'lancer_ecoute_clavier' relancé proprement.")
+                        except Exception as e  :
+                            self.logger.error(f"❌ Impossible de relancer lancer_ecoute_clavier : {e}")
                 ###########################################################################
                 """
                 # ------------------------------------------------------------------------
@@ -188,7 +190,7 @@ class Kernel:
 
         # Terminer le programme avec os._exit(0)
 
-
+        self.stopping = True
         self.logger.info("🛑 Arrêt de MasterApp via stop() ")
 
         #.0. Sauvegadre du registre
