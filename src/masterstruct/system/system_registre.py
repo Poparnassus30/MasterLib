@@ -1,7 +1,27 @@
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 import uuid
 from datetime import datetime
+from enum import Enum
 import json
+
+class DesiredState(str, Enum):
+    RUNNING = "RUNNING"
+    STOPPED = "stopped"
+    #RESTARTED = "restarted"
+    #UNKNOWN = "unknown"
+
+class EntryState(str, Enum):
+    STARTING = "STARTING"
+    RUNNING = "RUNNING"
+    STOPPING = "STOPPING"
+    STOPPED = "STOPPED"
+    CRASHED = "CRASHED"
+
+class RestartPolicy(str, Enum):
+    NEVER = "NEVER"
+    ON_FAILURE = "ON_FAILURE"
+    ALWAYS = "ALWAYS"
+
 
 
 # 🌟 Classe de base ultra-flexible
@@ -16,18 +36,31 @@ class RegistreEntry:
         self.relations = []                 # liste des id d'autre obljet, mise ne relation
         self.source = ""                    # ajoute la source de chaque entrée
 
+        self.desired_state: str = DesiredState.RUNNING
+        self.state: str = EntryState.STARTING.value
+        self.restart_policy: str = RestartPolicy.ON_FAILURE.value
+        self.restart_count: int = 0
+        self.last_error: Optional[str] = None
+
+        self.created_at: datetime = datetime.utcnow()
+        self.updated_at: datetime = datetime.utcnow()
+
+
     def maj_timestamp(self):
         self.timestamp = datetime.now()
-
     def ajouter_relation(self, autre_id: str):
         if autre_id not in self.relations:
             self.relations.append(autre_id)
-
     def lier(self, autre_id : str):
         self.ajouter_relation(autre_id)
-
     def est_actif(self) -> bool:
-        return self.meta.get("en_ligne") == 1 and self.meta.get("demarrage") == 1
+        # Nouveau modèle prioritaire
+        if getattr(self, "state", None):
+            return self.state == EntryState.RUNNING.value
+        # Fallback ancien modèle (compat)
+        en_ligne = self.meta.get("en_ligne", False)
+        demarrage = self.meta.get("demarrage", False)
+        return bool(en_ligne) and not bool(demarrage)
 
     def to_dict(self) -> dict:
         return {
@@ -37,8 +70,30 @@ class RegistreEntry:
             "type": self.type,
             "meta": self.meta,
             "timestamp": self.timestamp.isoformat(),
-            "relations": self.relations
+            "relations": self.relations,
+            
+            "desired_state": self.desired_state,
+            "state": self.state,
+            "restart_policy": self.restart_policy,
+            "restart_count": self.restart_count,
+            "last_error": self.last_error,
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
+
         }
+
+    def touch(self):
+        self.updated_at = datetime.utcnow()
+    def set_desired(self, desired: str):
+        self.desired_state = desired
+        self.touch()
+    def set_state(self, state: str, error: Optional[str] = None):
+        self.state = state
+        if error:
+            self.last_error = error
+        self.touch()
+
+    
 
 # 🎯 Spécialisation pour subprocess
 class SubprocessEntry(RegistreEntry):
@@ -174,11 +229,11 @@ class ManagerRegistre:
             return
 
         ids_a_supprimer = [
-            id_ for id_, entry in self._registre.item()
+            id_ for id_, entry in self._registre.items()
             if entry.nom == identifiant
         ]
         for id_ in ids_a_supprimer:
-            self.registre.pop(id_)
+            self._registre.pop(id_)
             self.system.logger.debug(f"[🗑️] Entrée supprimée par nom : {identifiant} (ID {id_})")
         
         # Supprimer aussi les relations vers cette entrée
@@ -203,7 +258,7 @@ class ManagerRegistre:
                 modifie = True
 
         if modifie:
-            entree.timestamp = datetime.datetime.utcnow()
+            entree.timestamp = datetime.utcnow()
             self.system.logger.info(f"[🔄] Entrée modifiée : {entree.nom} (ID {entree.id})")
 
         return modifie
