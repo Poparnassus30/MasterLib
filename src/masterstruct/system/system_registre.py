@@ -6,7 +6,7 @@ import json
 
 class DesiredState(str, Enum):
     RUNNING = "RUNNING"
-    STOPPED = "stopped"
+    STOPPED = "STOPPED"
     #RESTARTED = "restarted"
     #UNKNOWN = "unknown"
 
@@ -36,7 +36,7 @@ class RegistreEntry:
         self.relations = []                 # liste des id d'autre obljet, mise ne relation
         self.source = ""                    # ajoute la source de chaque entrée
 
-        self.desired_state: str = DesiredState.RUNNING
+        self.desired_state: str = DesiredState.RUNNING.value
         self.state: str = EntryState.STARTING.value
         self.restart_policy: str = RestartPolicy.ON_FAILURE.value
         self.restart_count: int = 0
@@ -62,6 +62,19 @@ class RegistreEntry:
         demarrage = self.meta.get("demarrage", False)
         return bool(en_ligne) and not bool(demarrage)
 
+    def touch(self):
+        self.updated_at = datetime.utcnow()
+    def set_desired(self, desired):
+        # accepte "RUNNING"/"STOPPED" ou DesiredState.RUNNING
+        self.desired_state = desired.value if isinstance(desired, Enum) else desired
+        self.touch()
+    def set_state(self, state, error: Optional[str] = None):
+        # accepte "RUNNING"/... ou EntryState.RUNNING
+        self.state = state.value if isinstance(state, Enum) else state
+        if error:
+            self.last_error = error
+        self.touch()
+        
     def to_dict(self) -> dict:
         return {
             "uuid_noeud":self.uuid_noeud,
@@ -71,7 +84,7 @@ class RegistreEntry:
             "meta": self.meta,
             "timestamp": self.timestamp.isoformat(),
             "relations": self.relations,
-            
+
             "desired_state": self.desired_state,
             "state": self.state,
             "restart_policy": self.restart_policy,
@@ -82,16 +95,6 @@ class RegistreEntry:
 
         }
 
-    def touch(self):
-        self.updated_at = datetime.utcnow()
-    def set_desired(self, desired: str):
-        self.desired_state = desired
-        self.touch()
-    def set_state(self, state: str, error: Optional[str] = None):
-        self.state = state
-        if error:
-            self.last_error = error
-        self.touch()
 
     
 
@@ -132,11 +135,27 @@ class ThreadEntry(RegistreEntry):
         super().__init__(name, type_objet="thread")
         self.ident = None
         self.is_daemon = None
-        self.actif = False
+        #self.actif = False
+        self.last_heartbeat = datetime.utcnow()
         self.timestamp = datetime.utcnow()
 
+    # Compat : actif devient un alias de state
+    @property
+    def actif(self) -> bool:
+        return self.state == EntryState.RUNNING.value
+
+    @actif.setter
+    def actif(self, valeur: bool):
+        if valeur:
+            self.set_state(EntryState.RUNNING)
+        else:
+            self.set_state(EntryState.STOPPED)
+    def heartbeat(self):
+        self.last_heartbeat = datetime.utcnow()
+        self.set_state(EntryState.RUNNING)
+
     def etat_simplifie(self):
-        return "✅ actif" if self.actif else "❌ inactif"
+        return "✅ actif" if self.actif else f"❌ {self.state.lower()}"
 
     def to_dict(self):
         data = super().to_dict()
@@ -144,6 +163,7 @@ class ThreadEntry(RegistreEntry):
             "ident": self.ident,
             "is_daemon": self.is_daemon,
             "actif": self.actif,
+            "last_heartbeat": self.last_heartbeat.isoformat(),
             "timestamp": self.timestamp.isoformat()
         })
         return data
