@@ -9,24 +9,6 @@ from masterstruct.system.system import System
 from masterstruct.kernel.kernel_ihm import NoyauManager
 from masterstruct.kernel.kernel_module import ModuleScanner
 
-#from modules.module import ModuleBase
-
-"""
-def lancer_kernel():
-
-    #print("🔍 Vérification de l'environnement Python en cours...")
-    #print("Python utilisé :", sys.executable)
-
-    venv_dir = os.path.join(os.getcwd(), "venv")
-
-    if sys.executable.startswith(venv_dir):
-        noyau = Noyau()
-        noyau.run()
-    else:
-        print("❌ Tu n'es PAS dans la virtualenv MasterApp")
-        print(f"➡️  Active-la avec : source {venv_dir}/bin/activate")
-"""
-
 #CORE INTELIGENCE
 class Kernel:
     def __init__(self, ctx) -> None:
@@ -247,36 +229,3 @@ class Kernel:
         # 6. Sortie
         self.logger.info("✅ MasterApp arrêté proprement.")
         os._exit(0)
-
-
-    """
-    def traiter_prompt(self, prompt: str, provenance: str = "local") -> str:
-        
-        #Traite un prompt en fonction de sa provenance (utilisateur, autre noeud...).
-        
-        pass
-
-    def enregistrer_demande(self, prompt: str, reponse: str, metadata: dict = {}) -> None:
-        
-        #Enregistre la requête et la réponse dans la base de données locale.
-        
-        pass
-
-    def synchroniser_bdd(self) -> None:
-        
-        #Synchronise les données avec un point de stockage externe ou un autre nœud.
-        
-        pass
-
-    def charger_memoire_locale(self) -> None:
-        
-        #Charge les anciennes données pour mémoire contextuelle.
-        
-        pass
-
-    def analyser_et_decider(self, prompt: str) -> dict:
-        
-        #Analyse le prompt pour décider du traitement, de la source, et des modules à appeler.
-        
-        pass
-    """

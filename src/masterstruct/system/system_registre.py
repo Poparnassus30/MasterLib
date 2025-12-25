@@ -94,7 +94,28 @@ class RegistreEntry:
             "updated_at": self.updated_at.isoformat(),
 
         }
+#Spécialisation pour Job distribué au noyau
 
+class JobEntry(RegistreEntry):
+    def __init__(self, name: str, job_type: str):
+        super().__init__(name, type_objet="job")
+        self.job_type = job_type
+        self.status = "pending"
+        self.result = None
+        self.timestamp = datetime.utcnow()
+
+
+    def to_dict(self):
+        data = super().to_dict()
+        data.update({
+            "job_type": self.job_type,
+            "status": self.status,
+            "result": self.result,
+            "timestamp": self.timestamp.isoformat()
+
+        })
+        return data
+        
 # Spécialisation pour les services
 class ConfigEntry(RegistreEntry):
     def __init__(self, name: str, config: dict):
