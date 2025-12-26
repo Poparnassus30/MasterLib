@@ -5,9 +5,9 @@ import os
 import threading
 import sys
 from pathlib import Path    
-from masterstruct.system.system import System
-from masterstruct.kernel.kernel_ihm import KernelIhm
-from masterstruct.kernel.kernel_module import ModuleScanner
+from masterkernel.system.system import System
+from masterkernel.kernel.kernel_ihm import KernelIhm
+from masterkernel.kernel.kernel_module import ModuleScanner
 
 #CORE INTELIGENCE
 class Kernel:
@@ -36,7 +36,7 @@ class Kernel:
         #Socket du noyau pour les processus enfants de MAsterApp
         self.socket_interface = None
         try:
-            from masterstruct.kernel.kernel_socket import NoyauSocket
+            from masterkernel.kernel.kernel_socket import NoyauSocket
             self.socket_interface = NoyauSocket(self)
         except ImportError as e:
             self.logger.error(f"❌ Impossible d’importer NoyauSocket : {e}")
