@@ -1,4 +1,108 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+kernel.py — MasterKernel (superviseur central / noyau parent)
+
+Vision
+------
+Le MasterKernel est le **parent** du système : il ne “fait pas le travail métier”.
+Il **démarre**, **supervise**, **arrête** et **coordonne** des enfants (services/modules),
+tout en maintenant une **source de vérité** via le Registre et une **vue** via l’IHM.
+
+Le MasterKernel distribue des jobs : il choisit *qui* exécute (routing/policy),
+envoie la requête via le Bus, puis collecte les résultats et met à jour l’état global.
+
+Ce que le Kernel EST
+---------------------
+- Superviseur (orchestrateur) : lifecycle des services (start/stop/restart/health)
+- Point de cohérence : registre global + politiques de routage
+- Coordinateur : bus central, discovery, planification de jobs
+- Poste de pilotage : IHM système (vue sur registre + actions)
+
+Ce que le Kernel N’EST PAS
+--------------------------
+- Un service métier (ex: image segmentation, OCR, etc.)
+- Un transport réseau (socket accept loop, DHT loop…) : ce sont des services/enfants
+- Un endroit où importer les services directement (éviter imports circulaires)
+
+Composants du MasterKernel
+--------------------------
+- kernel_registre.py
+  - Source de vérité : état des services, ressources, jobs, liaisons, timestamps…
+- kernel_bus.py
+  - Messagerie/routage : réception/validation/dispatch des events & requêtes
+- kernel_ihm.py
+  - Vue : affiche le registre (style “gestionnaire système”) et interactions utilisateur
+- (optionnel) kernel_policy.py
+  - Règles : local d’abord, remote fallback, choix du meilleur worker, priorités…
+
+Responsabilités principales
+----------------------------
+1) Boot / Initialisation
+   - Charger config minimale
+   - Initialiser logger
+   - Initialiser Registre
+   - Démarrer Bus + IHM
+2) Lancement des enfants
+   - Démarrer services d’infrastructure (transport, hotkeys, config_watch, subprocess…)
+   - Démarrer services métiers (image_analyse, ocr, embed…)
+   - Méthode recommandée : subprocess (isolement) + handshake health
+3) Supervision
+   - Heartbeats / health checks
+   - Redémarrage contrôlé si crash
+   - Arrêt propre (shutdown sequence)
+4) Distribution de jobs
+   - Sélection du service (capabilities + health + charge + policy)
+   - Envoi via KernelBus
+   - Collecte et enregistrement des résultats (registre + artefacts)
+5) Observabilité
+   - Logs unifiés + traces (request_id)
+   - Exposition état global à l’IHM
+6) Sécurité (évolution)
+   - Authentification des services, signatures, ACL, isolation
+
+Interfaces attendues
+---------------------
+- Contrats (masterstruct)
+  - Request/Response versionnés (api_version)
+  - Descripteurs de services (capabilities, endpoint)
+  - JobSpec / JobResult (si utilisé)
+- Services enfants (masterservice)
+  - Fournissent health + capabilities
+  - Acceptent des tasks via transport (socket, etc.)
+  - Peuvent publier events vers le bus (logs, hotkeys, discovery…)
+
+Cycle de vie (simplifié)
+-------------------------
+- start()
+  - init registry
+  - start bus thread/loop
+  - start ihm thread/loop
+  - launch essential services
+  - enter supervision loop
+- stop()
+  - demander shutdown aux services
+  - attendre arrêt confirmé
+  - fermer bus/transports
+  - flush logs
+  - exit
+
+Règles d’architecture
+----------------------
+- Le MasterKernel dépend de masterstruct (contrats) et d’utilitaires runtime,
+  mais **n’importe pas** directement les implémentations de services.
+- Les services communiquent avec le Kernel via le Bus/Transport (contrat commun),
+  jamais par import Python du Kernel.
+- Fractalisation : un nœud minimal peut ne lancer que registre+bus,
+  un nœud riche peut lancer des workers GPU, DHT, etc.
+
+Notes d’évolution
+------------------
+- Registry distribué (réplication DHT/LAN) tout en gardant un registre local “source”
+- Routage multi-nœuds + choix du worker optimal
+- Sandbox / permissions par service
+"""
+
 import logging
 import time
 import os
