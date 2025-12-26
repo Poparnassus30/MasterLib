@@ -8,14 +8,14 @@ import os
 import sys
 import time
 
-class NoyauManager():
+class KernelIhm():
     def __init__(self, noyau, live_mode):
         self.noyau = noyau
         self.system = noyau.system
         self.live_mode = live_mode
         self.logger = self.system.logger
         self.console = Console()
-        self.CHEMIN_SOCKET = "/tmp/masterapp.sock"
+        self.CHEMIN_SOCKET = "/tmp/master.sock"
 
     def envoyer_commande(self, commande: str) -> str:
         if not os.path.exists(self.CHEMIN_SOCKET):

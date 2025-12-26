@@ -6,7 +6,7 @@ import threading
 import sys
 from pathlib import Path    
 from masterstruct.system.system import System
-from masterstruct.kernel.kernel_ihm import NoyauManager
+from masterstruct.kernel.kernel_ihm import KernelIhm
 from masterstruct.kernel.kernel_module import ModuleScanner
 
 #CORE INTELIGENCE
@@ -33,11 +33,6 @@ class Kernel:
         self.running = False
         self.stopping = False
 
-        #self.logger = self.system.logger
-        #self.config = self.system.get_config()
-        #variable de debug visuel pour noyau_manager.py #False = pas de menu afficher dynamiquement
-        #self.live_mode = True
-
         #Socket du noyau pour les processus enfants de MAsterApp
         self.socket_interface = None
         try:
@@ -45,14 +40,7 @@ class Kernel:
             self.socket_interface = NoyauSocket(self)
         except ImportError as e:
             self.logger.error(f"❌ Impossible d’importer NoyauSocket : {e}")
-        
-        #self.uuid = self.system.get_or_create_uuid()
-        #self.update_manager = None
-        #self.network_node = None
-        #self.memory_engine = None
-        #self.module_manager = None
-        #self.interface = None
-        
+                
         #Gestion des modules
         #self.module = ModuleBase()
                 
@@ -75,7 +63,7 @@ class Kernel:
                     self.logger.warning("🛠️ Thread 'noyau_manager' inactif — redémarrage")
                     try:  
                         self.logger.warning("🛠️ Le thread 'noyau_manager' est mort — relance en cours")
-                        self.system.thread_manager.run("noyau_manager", lambda: NoyauManager(self, live_mode = self.live_mode).run())
+                        self.system.thread_manager.run("noyau_manager", lambda: KernelIhm(self, live_mode = self.live_mode).run())
                     except:
                         self.logger.error(f"❌ Impossible de relancer noyau_manager : {e}")
                 ###########################################################################
