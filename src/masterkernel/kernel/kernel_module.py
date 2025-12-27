@@ -4,7 +4,7 @@ import os
 import time
 import subprocess
 import traceback
-from masterstruct.system.system_registre import RegistreEntry
+from masterkernel.system.system_registre import RegistreEntry
 from configparser import NoOptionError
 
 class ModuleScanner:

@@ -5,7 +5,7 @@ import time
 import traceback
 from datetime import datetime
 
-from masterstruct.system.system_registre import *
+from masterkernel.system.system_registre import *
 
 class ManagerThread:
     def __init__(self, system_ref):

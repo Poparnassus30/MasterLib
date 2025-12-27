@@ -8,7 +8,7 @@ import traceback
 import socket
 import time
 
-from masterstruct.system.system_registre import SubprocessEntry
+from masterkernel.system.system_registre import SubprocessEntry
 
 
 class ManagerSubprocess:

@@ -22,17 +22,13 @@ else:
 
 import re
 import importlib
-
-
-
 from configparser import ConfigParser
-
 from typing import Callable
 
-from masterstruct.system.system_subprocess import ManagerSubprocess
-from masterstruct.system.system_registre import (SystemEntry, KernelEntry, ConfigEntry, EntryState, DesiredState, ManagerRegistre)
-from masterstruct.system.system_thread import ManagerThread
-from masterstruct.system.system_config import ManagerConfig
+from masterkernel.system.system_subprocess import ManagerSubprocess
+from masterkernel.system.system_registre import (SystemEntry, KernelEntry, ConfigEntry, EntryState, DesiredState, ManagerRegistre)
+from masterkernel.system.system_thread import ManagerThread
+from masterkernel.system.system_config import ManagerConfig
 
 class System:
     def __init__(self, base_path: str = None, app_name: str = None, paths=None, shutdown_cb=None) -> None:
