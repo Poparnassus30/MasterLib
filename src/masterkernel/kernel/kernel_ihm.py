@@ -5,14 +5,14 @@ kernel_ihm.py — KernelIhm (vue système du MasterKernel)
 
 Rôle
 -----
-KernelIhm est la **vue** du MasterKernel : elle expose une “image” lisible de l’état
-global en se basant sur le Registre (source de vérité). L’objectif est d’obtenir
+KernelIhm est la **vue** du MasterKernel : elle expose une “image” lisible de l'état
+global en se basant sur le Registre (source de vérité). L'objectif est d'obtenir
 un affichage type “gestionnaire système” (à la Windows) : services, threads,
 processus, sockets, charge, logs récents, jobs en cours, etc.
 
-KernelIhm ne prend **aucune décision d’orchestration** : elle observe et affiche.
+KernelIhm ne prend **aucune décision d'orchestration** : elle observe et affiche.
 Elle peut proposer des actions (start/stop/restart, filtrage, recherche), mais
-l’exécution réelle passe par le KernelBus (et donc par le MasterKernel).
+l'exécution réelle passe par le KernelBus (et donc par le MasterKernel).
 
 Entrées
 --------
@@ -22,7 +22,7 @@ Entrées
   - jobs (en attente / en cours / terminés) + timestamps
   - logs / événements (optionnel) ou références vers un service de logs
 - (optionnel) Bus :
-  - abonnements à des événements pour rafraîchir l’affichage en temps réel
+  - abonnements à des événements pour rafraîchir l'affichage en temps réel
 
 Sorties
 --------
@@ -35,7 +35,7 @@ Sorties
 Responsabilités principales
 ----------------------------
 1) Rendering (rendu)
-   - Transformer l’état du registre en tableaux/listes/graphes lisibles
+   - Transformer l'état du registre en tableaux/listes/graphes lisibles
    - Gérer la fréquence de rafraîchissement (polling ou events)
 2) Navigation
    - Vues : services, jobs, ressources, logs, réseau (LAN/DHT), alertes
@@ -47,12 +47,12 @@ Responsabilités principales
    - Mettre en évidence : services down, redémarrages, latence, backlog, erreurs
    - Aider au debug : afficher trace/request_id, version modèle, artefacts
 
-Principes d’architecture
+Principes d'architecture
 -------------------------
-- Lecture seule du registre (par défaut) : KernelIhm **n’écrit pas** l’état global.
+- Lecture seule du registre (par défaut) : KernelIhm **n'écrit pas** l'état global.
 - Les actions passent par le bus (contrat masterstruct), jamais par appels directs
   aux services (évite les dépendances et les chemins parallèles).
-- KernelIhm est remplaçable : console TUI aujourd’hui, web UI demain, sans changer
+- KernelIhm est remplaçable : console TUI aujourd'hui, web UI demain, sans changer
   le registre ni les services.
 
 Interfaces attendues
@@ -62,9 +62,9 @@ Interfaces attendues
   - `get(path|query)` : accès ciblé (ex: services actifs)
   - (optionnel) `subscribe()` : events de modification
 - KernelBus (optionnel) :
-  - `emit(task, payload)` : envoyer commandes issues de l’IHM
+  - `emit(task, payload)` : envoyer commandes issues de l'IHM
 
-Notes d’évolution
+Notes d'évolution
 ------------------
 - Mode “dashboard” (rafraîchissement auto + alertes)
 - Vue “topology” (graphe des nœuds/services via DHT/LAN)
