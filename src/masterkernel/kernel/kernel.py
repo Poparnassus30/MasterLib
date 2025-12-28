@@ -195,7 +195,7 @@ class Kernel:
                     except Exception as e  :
                         self.logger.error(f"❌ Impossible de relancer noyau_manager : {e}")
                 ###########################################################################
-
+                """
                 # ------------------------------------------------------------------------
                 # -- SOCKET UNIX
                 if not self.system.thread_manager.is_alive("noyau_socket"):
@@ -206,7 +206,8 @@ class Kernel:
                     except Exception as e   :
                         self.logger.error(f"❌ Impossible de relancer noyau_socket : {e}")
                 ###########################################################################
-
+                """
+                
                 # ------------------------------------------------------------------------
                 # --WATCH CONFIG config.ini
                 if not self.system.thread_manager.is_alive("watch_config"):
