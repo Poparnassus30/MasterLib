@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+# # masterservice/transport/base_transport.py
+
+# Descripteur: Interface de base pour les couches de transport de MasterLib.
+"""
+BaseTransport (Protocol)
+
+But :
+    Définir un "contrat" commun (interface) pour toutes les couches de transport de MasterLib.
+    Un transport est un tuyau : il reçoit/émet des messages entre entités (threads, subprocess, machines),
+    sans logique métier. La logique métier vit dans le KernelBus (dispatch).
+
+Pourquoi Protocol :
+    - On veut du "duck typing" : pas besoin d’hériter d’une classe, il suffit d’implémenter la même API.
+    - Pylance/mypy peuvent vérifier statiquement que ton transport expose bien start/stop/is_ready.
+    - Le KernelBus peut accepter n’importe quel transport tant qu’il respecte ce contrat.
+
+Rôle dans l’architecture :
+    KernelBus (logique)  <--handler(msg)->  BaseTransport (tuyau)
+    - Le Bus enregistre des handlers (topics) et sait router.
+    - Les transports appellent le handler du Bus lorsqu’ils reçoivent un message.
+    - Le Bus renvoie une réponse (dict) que le transport renvoie au client si nécessaire.
+
+Convention message :
+    - Un message est un dict JSON-friendly (serialisable) contenant au minimum : topic, type, data, id, ts, source.
+    - La réponse est aussi un dict JSON-friendly.
+
+Méthodes attendues :
+    - start(handler):
+        Démarre le transport et lui fournit le callback (handler) à appeler à chaque message reçu.
+        Le transport peut créer ses threads internes ici.
+    - stop():
+        Arrête le transport proprement (threads, sockets, ressources).
+    - is_ready():
+        Retourne True quand le transport est opérationnel (ex: socket bind + listen OK).
+
+Attributs attendus :
+    - name (str):
+        Nom court du transport (ex: "ipc.unix_socket", "tcp", "inproc.queue") pour logs/registre.
+
+Notes :
+    - Le transport ne doit PAS dépendre du Kernel (pas d’import Kernel), uniquement du handler.
+    - La gestion "registre-first" (desired_state, restart_policy) reste au niveau Kernel/Supervisor, pas ici.
+"""
+
+
+from __future__ import annotations
+from typing import Callable, Protocol, Dict, Any
+
+BusHandler = Callable[[Dict[str, Any]], Dict[str, Any]]
+
+class BaseTransport(Protocol):
+    name: str
+
+    def start(self, handler: BusHandler) -> None: ...
+    def stop(self) -> None: ...
+    def is_ready(self) -> bool: ...
