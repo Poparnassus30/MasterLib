@@ -112,6 +112,8 @@ from pathlib import Path
 from masterkernel.system.system import System
 from masterkernel.kernel.kernel_ihm import KernelIhm
 from masterkernel.kernel.kernel_module import ModuleScanner
+from masterkernel.kernel.kernel_bus import KernelBus
+
 
 #CORE INTELIGENCE
 class Kernel:
@@ -128,6 +130,9 @@ class Kernel:
 
         if self.system is None:
             raise RuntimeError("ctx.system manquant : runtime doit fournir System")
+        
+        # Permet au clavier (System) de demander un shutdown propre au Kernel
+        self.system.shutdown_cb = self.stop
 
         self.logger = getattr(self.system, "logger", logging.getLogger("Kernel"))
 
@@ -137,13 +142,32 @@ class Kernel:
         self.running = False
         self.stopping = False
 
+        # ------------------------------------------------------------------
+        # BUS (v1) — in-process, sans transport pour l’instant
+        # ------------------------------------------------------------------
+        self.bus = KernelBus(system=self.system, registre=getattr(self.system, "registre", None))
+
+        # Handlers "core" (toujours présents)
+        self.bus.register_handler("kernel.ping", lambda msg: {"pong": True})
+
+        def _h_shutdown(msg):
+            reason = (msg.get("data") or {}).get("reason", "bus_shutdown")
+            self.stop(reason=reason)
+            return {"shutdown": "ok"}
+
+        self.bus.register_handler("kernel.shutdown", _h_shutdown)
+
+        # Démarre le bus (même si aucun transport n’est branché)
+        self.bus.start()
+
+
         #Socket du noyau pour les processus enfants de MAsterApp
         self.socket_interface = None
         try:
-            from masterkernel.kernel.kernel_socket import NoyauSocket
-            self.socket_interface = NoyauSocket(self)
+            from MasterLib.src.masterservice.transport.ipc.transport_ipc import TransportIpc
+            self.socket_interface = TransportIpc(self)
         except ImportError as e:
-            self.logger.error(f"❌ Impossible d’importer NoyauSocket : {e}")
+            self.logger.error(f"❌ Impossible d’importer TransportIpc : {e}")
                 
         #Gestion des modules
         #self.module = ModuleBase()
@@ -168,7 +192,7 @@ class Kernel:
                     try:  
                         self.logger.warning("🛠️ Le thread 'noyau_manager' est mort — relance en cours")
                         self.system.thread_manager.run("noyau_manager", lambda: KernelIhm(self, live_mode = self.live_mode).run())
-                    except:
+                    except Exception as e  :
                         self.logger.error(f"❌ Impossible de relancer noyau_manager : {e}")
                 ###########################################################################
 
@@ -245,7 +269,7 @@ class Kernel:
             self.logger.info("🛑 Arrêt manuel de MasterApp en cours.")
             self.stop()
                 
-    def stop(self):
+    def stop(self, reason: str = "requested"):
         #Fermeture du programme:
 
         # Mettre self.running = False (arrête la boucle while).
@@ -265,7 +289,7 @@ class Kernel:
         # Terminer le programme avec os._exit(0)
 
         self.stopping = True
-        self.logger.info("🛑 Arrêt de MasterApp via stop() ")
+        self.logger.info(f"🛑 Arrêt de MasterApp via stop() — reason={reason}")
 
         #.0. Sauvegadre du registre
         try:

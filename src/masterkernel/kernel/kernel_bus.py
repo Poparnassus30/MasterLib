@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# masterkernel/kernel/kernel_bus.py
+
+# Descripteur: KernelBus (bus de communication du MasterKernel)
 """
    kernel_bus.py — KernelBus (bus de communication du MasterKernel)
 
@@ -99,5 +102,87 @@
 
 """
 
+
+from __future__ import annotations
+from typing import Any, Dict, Callable, Optional
+import time, uuid
+
+Handler = Callable[[Dict[str, Any]], Dict[str, Any]]
+
 class KernelBus:
-    pass
+    def __init__(self, system, registre=None):
+        self.system = system
+        self.registre = registre
+        self.logger = system.logger.getChild("bus")
+
+        self._handlers: dict[str, Handler] = {}
+        self._transports = []
+        self._running = False
+
+    # --------- Public API ----------
+    def register_handler(self, topic: str, handler: Handler) -> None:
+        self._handlers[topic] = handler
+
+    def register_transport(self, transport: Any) -> None:
+        # transport = BaseTransport (duck typing)
+        self._transports.append(transport)
+
+    def start(self) -> None:
+        if self._running:
+            return
+        self._running = True
+        self.logger.info("🧠 KernelBus start")
+        for t in self._transports:
+            try:
+                t.start(self.handle)   # handler = bus.handle
+                self.logger.info(f"🔌 Transport démarré: {getattr(t,'name',t.__class__.__name__)}")
+            except Exception as e:
+                self.logger.exception(f"❌ Transport start failed: {t} -> {e}")
+
+    def stop(self) -> None:
+        self._running = False
+        for t in self._transports:
+            try:
+                t.stop()
+            except Exception:
+                pass
+        self.logger.info("🛑 KernelBus stop")
+
+    def publish(self, topic: str, data: Optional[dict] = None, source: str = "kernel") -> Dict[str, Any]:
+        msg = {
+            "type": "event",
+            "topic": topic,
+            "source": source,
+            "id": str(uuid.uuid4()),
+            "ts": time.time(),
+            "data": data or {},
+        }
+        return self.handle(msg)
+
+    # --------- Core dispatch ----------
+    def handle(self, msg: Dict[str, Any]) -> Dict[str, Any]:
+        """Entrée unique pour TOUS les messages (thread/module/subprocess)."""
+        msg = self._normalize(msg)
+        topic = msg["topic"]
+
+        handler = self._handlers.get(topic)
+        if handler is None:
+            return {"ok": False, "id": msg["id"], "error": f"no_handler:{topic}"}
+
+        try:
+            resp = handler(msg) or {}
+            return {"ok": True, "id": msg["id"], **resp}
+        except Exception as e:
+            self.logger.exception(f"💥 Handler crash topic={topic}: {e}")
+            return {"ok": False, "id": msg["id"], "error": str(e)}
+
+    def _normalize(self, msg: Dict[str, Any]) -> Dict[str, Any]:
+        # garde-fous (contract stable)
+        out = dict(msg)
+        out.setdefault("type", "event")
+        out.setdefault("topic", "unknown")
+        out.setdefault("source", "unknown")
+        out.setdefault("id", str(uuid.uuid4()))
+        out.setdefault("ts", time.time())
+        out.setdefault("data", {})
+        return out
