@@ -259,6 +259,12 @@ def run_project_cli(*, app_dir: Path, app_main: Path | None = None, app_name: st
     """
     app_dir = app_dir.resolve()
     _bootstrap_log_init(app_dir)
+
+    #ajout temporaire pour debug
+    print("BOOTSTRAP_DEBUG app_dir =", app_dir, flush=True)
+    print("BOOTSTRAP_DEBUG log_file =", _BOOTSTRAP_LOG_FILE, flush=True)
+
+    # Startup logs
     _print(f"🚀 Bootstrap start | app_dir={app_dir}")
     _print(f"🐍 Python: {sys.executable}")
 
