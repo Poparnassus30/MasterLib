@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+from datetime import datetime
 import os
 import sys
 import shutil
@@ -11,6 +11,41 @@ from dataclasses import dataclass
 # ----------------------------
 # Utils
 # ----------------------------
+_BOOTSTRAP_LOG_FILE: Path | None = None
+
+def _bootstrap_log_init(app_dir: Path) -> None:
+    """
+    Initialise le log bootstrap dans <app_dir>/data/logs/bootstrap.log
+    Override possible via env: BOOTSTRAP_LOG=/chemin/xxx.log
+    """
+    global _BOOTSTRAP_LOG_FILE
+
+    # override si tu veux déporter le log
+    override = os.environ.get("BOOTSTRAP_LOG", "").strip()
+    if override:
+        p = Path(override).expanduser()
+    else:
+        p = app_dir / "data" / "logs" / "bootstrap.log"
+
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        _BOOTSTRAP_LOG_FILE = p
+    except Exception:
+        _BOOTSTRAP_LOG_FILE = None  # on ne casse jamais le bootstrap pour un log
+
+def _print(msg: str) -> None:
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    line = f"[{ts}] {msg}"
+
+    # console
+    print(line, flush=True)
+
+    # fichier (best effort)
+    if _BOOTSTRAP_LOG_FILE:
+        try:
+            _BOOTSTRAP_LOG_FILE.open("a", encoding="utf-8").write(line + "\n")
+        except Exception:
+            pass
 
 def _detect_installed_masterlib(py: str) -> tuple[bool, str]:
     """
@@ -98,6 +133,10 @@ def resolve_masterlib_source(app_dir: Path) -> MasterLibSource:
     - Else use cache repo (safe to sync/hard-reset).
     Handles: offline, cache missing/corrupt, etc.
     """
+    def _is_forbidden_local_path(p: Path) -> bool:
+        # Empêche de considérer une copie vendored (.deps) comme "repo local"
+        return "/.deps/" in str(p.resolve()).replace("\\", "/")
+
     masterlib_local = os.environ.get("MASTERLIB_LOCAL", "").strip()
     masterlib_ref   = os.environ.get("MASTERLIB_REF", "dev").strip()
     masterlib_url   = os.environ.get("MASTERLIB_URL", "https://github.com/Poparnassus30/MasterLib.git").strip()
@@ -105,7 +144,7 @@ def resolve_masterlib_source(app_dir: Path) -> MasterLibSource:
     # 1) local explicite
     if masterlib_local:
         p = Path(masterlib_local).expanduser()
-        if p.is_dir():
+        if p.is_dir() and not _is_forbidden_local_path(p):
             return MasterLibSource(
                 mode="local",
                 path=p,
@@ -116,7 +155,7 @@ def resolve_masterlib_source(app_dir: Path) -> MasterLibSource:
 
     # 2) repo voisin ../MasterLib
     neighbor = app_dir.parent / "MasterLib"
-    if neighbor.is_dir():
+    if neighbor.is_dir() and not _is_forbidden_local_path(neighbor):
         return MasterLibSource(
             mode="local",
             path=neighbor,
@@ -126,8 +165,8 @@ def resolve_masterlib_source(app_dir: Path) -> MasterLibSource:
         )
 
     # 3) standard dev WSL
-    standard = Path("/home/poparnassus/github/MasterLib")
-    if standard.is_dir():
+    standard = Path.home() / "github" / "MasterLib"
+    if standard.is_dir() and not _is_forbidden_local_path(standard):
         return MasterLibSource(
             mode="local",
             path=standard,
@@ -232,6 +271,10 @@ def run_project_cli(*, app_dir: Path, app_main: Path | None = None, app_name: st
     - launches app_main with the same interpreter
     """
     app_dir = app_dir.resolve()
+    _bootstrap_log_init(app_dir)
+    _print(f"🚀 Bootstrap start | app_dir={app_dir}")
+    _print(f"🐍 Python: {sys.executable}")
+
     app_main = (app_main or (app_dir / "main.py")).resolve()
 
     os.environ["APP_PATH"] = str(app_dir)
@@ -246,6 +289,9 @@ def run_project_cli(*, app_dir: Path, app_main: Path | None = None, app_name: st
         pass
 
     src = resolve_masterlib_source(app_dir)
+    _print(f"🧠 MasterLib source: mode={src.mode} ref={src.ref} commit={src.commit} dirty={src.dirty}")
+    _print(f"📍 MasterLib path: {src.path}")
+
     dirty_tag = "DIRTY" if src.dirty else "clean"
     _print(f"🧠 MasterLib source: {src.mode} | ref={src.ref} | commit={src.commit} | {dirty_tag}")
 
