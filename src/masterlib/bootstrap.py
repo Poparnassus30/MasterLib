@@ -12,6 +12,25 @@ from dataclasses import dataclass
 # Utils
 # ----------------------------
 
+def _detect_installed_masterlib(py: str) -> tuple[bool, str]:
+    """
+    Returns (installed?, location_string).
+    Tries to locate where masterlib is imported from in the current interpreter.
+    """
+    code = (
+        "import importlib.util\n"
+        "spec = importlib.util.find_spec('masterlib')\n"
+        "print(spec.origin if spec and spec.origin else '')\n"
+    )
+    r = _sh([py, "-c", code], check=False, quiet=True)
+    loc = (r.stdout or "").strip()
+    return (bool(loc), loc)
+
+
+def _uninstall_masterlib(py: str) -> None:
+    _print("🧹 Uninstall existing masterlib…")
+    _sh([py, "-m", "pip", "uninstall", "-y", "masterlib"], check=False, quiet=False)
+
 def _print(msg: str) -> None:
     print(msg, flush=True)
 
@@ -182,9 +201,22 @@ def resolve_masterlib_source(app_dir: Path) -> MasterLibSource:
 def ensure_masterlib_installed(py: str, masterlib_path: Path) -> None:
     """
     Installs MasterLib in editable mode into the current environment (venv).
-    Safe & idempotent: pip will update the .pth/direct_url accordingly.
+    If an existing masterlib is installed from an unwanted location (e.g. project .deps),
+    we uninstall it first to avoid .pth precedence issues.
     """
-    _print(f"🧩 MasterLib (editable): {masterlib_path}")
+    masterlib_path = masterlib_path.resolve()
+    _print(f"🧩 MasterLib target (editable): {masterlib_path}")
+
+    installed, loc = _detect_installed_masterlib(py)
+    if installed:
+        loc_norm = loc.replace("\\", "/")
+        _print(f"🔎 Existing masterlib detected: {loc_norm}")
+
+        # If it comes from a .deps vendored copy, we consider it "poison" for bootstrap.
+        if "/.deps/" in loc_norm:
+            _print("⚠️  masterlib comes from .deps -> uninstall to let bootstrap control the source.")
+            _uninstall_masterlib(py)
+
     r = _sh([py, "-m", "pip", "install", "-e", str(masterlib_path)], check=False, quiet=False)
     if r.returncode != 0:
         _print("❌ pip install -e failed")
