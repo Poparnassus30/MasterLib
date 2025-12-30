@@ -66,9 +66,6 @@ def _uninstall_masterlib(py: str) -> None:
     _print("🧹 Uninstall existing masterlib…")
     _sh([py, "-m", "pip", "uninstall", "-y", "masterlib"], check=False, quiet=False)
 
-def _print(msg: str) -> None:
-    print(msg, flush=True)
-
 def _sh(cmd: list[str], cwd: Path | None = None, check: bool = True, quiet: bool = False) -> subprocess.CompletedProcess:
     if not quiet:
         _print("▶ " + " ".join(cmd))
@@ -152,7 +149,7 @@ def resolve_masterlib_source(app_dir: Path) -> MasterLibSource:
                 commit=_git_commit_short(p) if _is_git_repo(p) else "no-git",
                 dirty=_git_dirty(p) if _is_git_repo(p) else False,
             )
-
+    """
     # 2) repo voisin ../MasterLib
     neighbor = app_dir.parent / "MasterLib"
     if neighbor.is_dir() and not _is_forbidden_local_path(neighbor):
@@ -163,17 +160,7 @@ def resolve_masterlib_source(app_dir: Path) -> MasterLibSource:
             commit=_git_commit_short(neighbor) if _is_git_repo(neighbor) else "no-git",
             dirty=_git_dirty(neighbor) if _is_git_repo(neighbor) else False,
         )
-
-    # 3) standard dev WSL
-    standard = Path.home() / "github" / "MasterLib"
-    if standard.is_dir() and not _is_forbidden_local_path(standard):
-        return MasterLibSource(
-            mode="local",
-            path=standard,
-            ref=masterlib_ref,
-            commit=_git_commit_short(standard) if _is_git_repo(standard) else "no-git",
-            dirty=_git_dirty(standard) if _is_git_repo(standard) else False,
-        )
+    """
 
     # 4) cache jetable (sync ok)
     app_name = os.environ.get("APP_NAME", app_dir.name).strip() or app_dir.name
