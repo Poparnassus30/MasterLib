@@ -25,22 +25,37 @@ def _bootstrap_log_init(app_dir: Path) -> None:
     if override:
         p = Path(override).expanduser()
     else:
-        #p = app_dir / "data" / "logs" / "bootstrap.log"
-        p = Path.home() / ".cache" / app_dir.name / "logs" / "bootstrap.log"
-
+        p = app_dir / "data" / "logs" / "bootstrap.log"
     try:
         p.parent.mkdir(parents=True, exist_ok=True)
         _BOOTSTRAP_LOG_FILE = p
-    except Exception:
-        _BOOTSTRAP_LOG_FILE = None  # on ne casse jamais le bootstrap pour un log
-
-    # écrit une ligne "preuve de vie" immédiatement
-    try:
-        _BOOTSTRAP_LOG_FILE.open("a", encoding="utf-8").write(
-            f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] ✅ bootstrap logger init | app_dir={app_dir}\n"
-        )
-    except Exception:
-        pass
+    except Exception as e1:
+        # Fallback ultime (si projet non inscriptible)
+        fallback = Path.home() / ".cache" / app_dir.name / "logs" / "bootstrap.log"
+        try:
+            fallback.parent.mkdir(parents=True, exist_ok=True)
+            _BOOTSTRAP_LOG_FILE = fallback
+            print(f"[bootstrap] log fallback to {fallback} (reason={e1!r})", file=sys.stderr, flush=True)
+        except Exception as e2:
+            _BOOTSTRAP_LOG_FILE = None  # on ne casse jamais le bootstrap pour un log
+            print(f"[bootstrap] log init failed: {e2!r}", file=sys.stderr, flush=True)
+            return
+    
+    # "preuve de vie du logger" 
+    log = _BOOTSTRAP_LOG_FILE
+    if log:
+        try:
+            log.open("a", encoding="utf-8").write(
+                f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] ✅ bootstrap logger init | app_dir={app_dir}\n"
+            )
+        except Exception as e:
+            print(
+                f"[bootstrap] log write failed: {e!r} (path={log})",
+                file=sys.stderr,
+                flush=True
+            )
+    print(f"[bootstrap] log file = {log}", file=sys.stderr, flush=True)
+        
 
 
 
@@ -57,6 +72,16 @@ def _print(msg: str) -> None:
             _BOOTSTRAP_LOG_FILE.open("a", encoding="utf-8").write(line + "\n")
         except Exception:
             pass
+
+def _pause_if_debug(step: str) -> None:
+    if os.environ.get("BOOTSTRAP_PAUSE", "").strip() == "1":
+        _print(f"⏸️ DEBUG pause active (step={step})")
+        print(f"[bootstrap] pause step={step} → Entrée pour continuer…", file=sys.stderr, flush=True)
+        try:
+            input()
+        except EOFError:
+            # stdin indisponible (ex: lancé via service) → on ne bloque pas
+            print("[bootstrap] stdin fermé, pause ignorée.", file=sys.stderr, flush=True)
 
 def _detect_installed_masterlib(py: str) -> tuple[bool, str]:
     """
@@ -271,10 +296,7 @@ def run_project_cli(*, app_dir: Path, app_main: Path | None = None, app_name: st
     app_dir = app_dir.resolve()
     _bootstrap_log_init(app_dir)
     _print(f"🚀 Bootstrap start | app_dir={app_dir}")
-    
-    #ajout temporaire pour debug
-    print("BOOTSTRAP_DEBUG app_dir =", app_dir, flush=True)
-    print("BOOTSTRAP_DEBUG log_file =", _BOOTSTRAP_LOG_FILE, flush=True)
+    _pause_if_debug("after_log_init")
 
     # Startup logs
     _print(f"🚀 Bootstrap start | app_dir={app_dir}")
@@ -293,7 +315,10 @@ def run_project_cli(*, app_dir: Path, app_main: Path | None = None, app_name: st
     except Exception:
         pass
 
+    _pause_if_debug("start_resolve")
     src = resolve_masterlib_source(app_dir)
+    _pause_if_debug("after_resolve")
+
     _print(f"🧠 MasterLib source: mode={src.mode} ref={src.ref} commit={src.commit} dirty={src.dirty}")
     _print(f"📍 MasterLib path: {src.path}")
 
@@ -303,7 +328,13 @@ def run_project_cli(*, app_dir: Path, app_main: Path | None = None, app_name: st
     # SAFETY: never run destructive git operations on local dev repos.
     # (enforced by resolve_masterlib_source)
 
+    _pause_if_debug("start_install")
     ensure_masterlib_installed(py, src.path)
+    _pause_if_debug("after_install")
+    r = _sh([py, "-c", "import masterlib; print(masterlib.__file__)"], check=False, quiet=False)
+    _print(f"🔎 masterlib import path => {(r.stdout or '').strip()}")
+    _pause_if_debug("verify_import")
+
 
     if not app_main.exists():
         raise SystemExit(f"APP_MAIN introuvable: {app_main}")
