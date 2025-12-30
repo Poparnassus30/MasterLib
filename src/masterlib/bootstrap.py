@@ -25,13 +25,24 @@ def _bootstrap_log_init(app_dir: Path) -> None:
     if override:
         p = Path(override).expanduser()
     else:
-        p = app_dir / "data" / "logs" / "bootstrap.log"
+        #p = app_dir / "data" / "logs" / "bootstrap.log"
+        p = Path.home() / ".cache" / app_dir.name / "logs" / "bootstrap.log"
 
     try:
         p.parent.mkdir(parents=True, exist_ok=True)
         _BOOTSTRAP_LOG_FILE = p
     except Exception:
         _BOOTSTRAP_LOG_FILE = None  # on ne casse jamais le bootstrap pour un log
+
+    # écrit une ligne "preuve de vie" immédiatement
+    try:
+        _BOOTSTRAP_LOG_FILE.open("a", encoding="utf-8").write(
+            f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] ✅ bootstrap logger init | app_dir={app_dir}\n"
+        )
+    except Exception:
+        pass
+
+
 
 def _print(msg: str) -> None:
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -259,7 +270,8 @@ def run_project_cli(*, app_dir: Path, app_main: Path | None = None, app_name: st
     """
     app_dir = app_dir.resolve()
     _bootstrap_log_init(app_dir)
-
+    _print(f"🚀 Bootstrap start | app_dir={app_dir}")
+    
     #ajout temporaire pour debug
     print("BOOTSTRAP_DEBUG app_dir =", app_dir, flush=True)
     print("BOOTSTRAP_DEBUG log_file =", _BOOTSTRAP_LOG_FILE, flush=True)
