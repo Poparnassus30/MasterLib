@@ -55,6 +55,9 @@ def _bootstrap_log_init(app_dir: Path) -> None:
                 flush=True
             )
     print(f"[bootstrap] log file = {log}", file=sys.stderr, flush=True)
+    if os.environ.get("BOOTSTRAP_PAUSE", "").strip() == "1":
+        print(f"[bootstrap] pause (log init) — log={log}", file=sys.stderr, flush=True)
+        input()
         
 
 
