@@ -6,7 +6,7 @@ import shutil
 import subprocess
 from pathlib import Path
 from dataclasses import dataclass
-
+import time
 
 # ----------------------------
 # Utils
@@ -15,50 +15,88 @@ _BOOTSTRAP_LOG_FILE: Path | None = None
 
 def _bootstrap_log_init(app_dir: Path) -> None:
     """
-    Initialise le log bootstrap dans <app_dir>/data/logs/bootstrap.log
-    Override possible via env: BOOTSTRAP_LOG=/chemin/xxx.log
+    Initialise un log bootstrap fiable.
+
+    Priorité:
+      1) BOOTSTRAP_LOG (override) si défini
+      2) app_dir/data/logs/bootstrap.log (dev-friendly)
+      3) fallback ~/.cache/<app_dir.name>/logs/bootstrap.log si le projet n'est pas inscriptible
+
+    Comportement:
+      - crée les dossiers si besoin
+      - écrit une "preuve de vie" immédiatement
+      - en cas d'échec, écrit l'erreur sur stderr (pas effacé par Rich)
+      - optionnel: BOOTSTRAP_PAUSE=1 => pause (Enter si possible, sinon sleep 60s)
     """
     global _BOOTSTRAP_LOG_FILE
 
-    # override si tu veux déporter le log
+    app_dir = Path(app_dir).resolve()
+
     override = os.environ.get("BOOTSTRAP_LOG", "").strip()
     if override:
-        p = Path(override).expanduser()
+        primary = Path(override).expanduser()
     else:
-        p = app_dir / "data" / "logs" / "bootstrap.log"
+        primary = app_dir / "data" / "logs" / "bootstrap.log"
+
+    # Tentative 1: chemin primaire
     try:
-        p.parent.mkdir(parents=True, exist_ok=True)
-        _BOOTSTRAP_LOG_FILE = p
-    except Exception as e1:
-        # Fallback ultime (si projet non inscriptible)
+        primary.parent.mkdir(parents=True, exist_ok=True)
+        _BOOTSTRAP_LOG_FILE = primary
+    except Exception as e:
+        # Tentative 2: fallback cache utilisateur
         fallback = Path.home() / ".cache" / app_dir.name / "logs" / "bootstrap.log"
         try:
             fallback.parent.mkdir(parents=True, exist_ok=True)
             _BOOTSTRAP_LOG_FILE = fallback
-            print(f"[bootstrap] log fallback to {fallback} (reason={e1!r})", file=sys.stderr, flush=True)
-        except Exception as e2:
-            _BOOTSTRAP_LOG_FILE = None  # on ne casse jamais le bootstrap pour un log
-            print(f"[bootstrap] log init failed: {e2!r}", file=sys.stderr, flush=True)
-            return
-    
-    # "preuve de vie du logger" 
-    log = _BOOTSTRAP_LOG_FILE
-    if log:
-        try:
-            log.open("a", encoding="utf-8").write(
-                f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] ✅ bootstrap logger init | app_dir={app_dir}\n"
-            )
-        except Exception as e:
             print(
-                f"[bootstrap] log write failed: {e!r} (path={log})",
+                f"[bootstrap] log fallback to {fallback} (reason={e!r})",
                 file=sys.stderr,
-                flush=True
+                flush=True,
             )
+        except Exception as e2:
+            _BOOTSTRAP_LOG_FILE = None
+            print(
+                f"[bootstrap] log init failed: {e2!r} (path={primary})",
+                file=sys.stderr,
+                flush=True,
+            )
+            return
+
+    # Affiche le chemin réellement utilisé (stderr => pas “effacé” par Rich)
+    log = _BOOTSTRAP_LOG_FILE
     print(f"[bootstrap] log file = {log}", file=sys.stderr, flush=True)
+
+    # Preuve de vie
+    try:
+        log.open("a", encoding="utf-8").write(
+            f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] ✅ bootstrap logger init | app_dir={app_dir}\n"
+        )
+    except Exception as e:
+        print(
+            f"[bootstrap] log write failed: {e!r} (path={log})",
+            file=sys.stderr,
+            flush=True,
+        )
+
+    # Pause debug optionnelle
     if os.environ.get("BOOTSTRAP_PAUSE", "").strip() == "1":
-        print(f"[bootstrap] pause (log init) — log={log}", file=sys.stderr, flush=True)
-        input()
-        
+        try:
+            if log:
+                log.open("a", encoding="utf-8").write(
+                    f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] ⏸️ BOOTSTRAP_PAUSE=1 (pause)\n"
+                )
+        except Exception:
+            pass
+
+        print(
+            "[bootstrap] BOOTSTRAP_PAUSE=1 → pause active (Entrée pour continuer, sinon sleep 60s).",
+            file=sys.stderr,
+            flush=True,
+        )
+        try:
+            input()
+        except EOFError:
+            time.sleep(60)        
 
 
 
@@ -299,11 +337,8 @@ def run_project_cli(*, app_dir: Path, app_main: Path | None = None, app_name: st
     app_dir = app_dir.resolve()
     _bootstrap_log_init(app_dir)
     _print(f"🚀 Bootstrap start | app_dir={app_dir}")
-    _pause_if_debug("after_log_init")
-
-    # Startup logs
-    _print(f"🚀 Bootstrap start | app_dir={app_dir}")
     _print(f"🐍 Python: {sys.executable}")
+    _pause_if_debug("after_log_init")
 
     app_main = (app_main or (app_dir / "main.py")).resolve()
 
@@ -314,7 +349,7 @@ def run_project_cli(*, app_dir: Path, app_main: Path | None = None, app_name: st
 
     # pip upgrade: best effort (offline-friendly)
     try:
-        _sh([py, "-m", "pip", "install", "--upgrade", "pip", "--quiet"], check=False, quiet=True)
+        _sh([py, "-m", "pip", "install", "--upgrade", "pip", "--quiet"], check=False, quiet=False)
     except Exception:
         pass
 
