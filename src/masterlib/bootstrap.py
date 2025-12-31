@@ -9,6 +9,47 @@ import shutil
 from pathlib import Path
 from dataclasses import dataclass
 import time
+import logging
+
+def _make_bootstrap_logger(app_dir: Path, app_name: str) -> tuple[logging.Logger, Path]:
+    # 1) chemin du log (override possible)
+    wanted = os.environ.get("BOOTSTRAP_LOG", "").strip()
+    log_path = Path(wanted) if wanted else (app_dir / "data/logs/bootstrap.log")
+    log_path = log_path.expanduser()
+
+    # 2) mkdir + fallback si souci
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.touch(exist_ok=True)
+    except Exception:
+        log_path = Path("/tmp") / f"{app_name}_bootstrap.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.touch(exist_ok=True)
+
+    # 3) logger dédié
+    logger = logging.getLogger("bootstrap")
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+
+    # évite les doublons si re-run
+    logger.handlers.clear()
+
+    fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+
+    fh = logging.FileHandler(log_path, encoding="utf-8")
+    fh.setFormatter(fmt)
+    logger.addHandler(fh)
+
+    sh = logging.StreamHandler(sys.stderr)
+    sh.setFormatter(fmt)
+    logger.addHandler(sh)
+
+    logger.info("bootstrap logger ready -> %s", log_path)
+    for h in logger.handlers:
+        try: h.flush()
+        except Exception: pass
+
+    return logger, log_path
 
 # ----------------------------
 # Utils
@@ -542,6 +583,10 @@ def run_project_cli(*, app_dir: Path, app_main: Path | None = None, app_name: st
         raise SystemExit("BOOTSTRAP_SENTINEL: run_project_cli reached")
 
     app_dir = _resolve_app_root(app_dir)
+    logger, log_path = _make_bootstrap_logger(app_dir=app_dir, app_name=app_name)
+    logger.info("app_dir=%s", app_dir)
+    logger.info("python=%s", sys.executable)
+
     _bootstrap_log_init(app_dir)
     _print(f"🚀 Bootstrap start | app_dir={app_dir}")
     _print(f"🐍 Python: {sys.executable}")
@@ -596,7 +641,14 @@ def run_project_cli(*, app_dir: Path, app_main: Path | None = None, app_name: st
             _print("✅ BOOTSTRAP_TABS=1 : pas de exec(), retour au shell.")
             return 0
         _print("⚠️  BOOTSTRAP_TABS=1 demandé, mais impossible d'ouvrir un terminal. On continue en exec().")
-
+    
+    logger.info("exec -> %s", argv)
+    for h in logger.handlers:
+        try:
+            h.flush()
+            h.close()
+        except Exception:
+            pass
     os.execv(py, argv)
 
     return 0
