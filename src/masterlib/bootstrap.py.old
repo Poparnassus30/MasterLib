@@ -13,32 +13,6 @@ import time
 # ----------------------------
 _BOOTSTRAP_LOG_FILE: Path | None = None
 
-
-# ----------------------------
-# Path helpers
-# ----------------------------
-
-def _resolve_app_root(app_dir: Path) -> Path:
-    """
-    Tente de normaliser app_dir vers la racine du projet.
-
-    Heuristiques (max 8 niveaux):
-    - si app_dir == "src" -> parent
-    - remonte tant qu'on ne trouve pas un marqueur projet (pyproject.toml, .git, main.py)
-    """
-    p = Path(app_dir).expanduser().resolve()
-    if p.name == "src" and p.parent.exists():
-        p = p.parent
-
-    markers = ("pyproject.toml", ".git", "main.py")
-    for _ in range(8):
-        if any((p / m).exists() for m in markers):
-            return p
-        if p.parent == p:
-            break
-        p = p.parent
-    return Path(app_dir).expanduser().resolve()
-
 def _bootstrap_log_init(app_dir: Path) -> None:
     """
     Initialise un log bootstrap fiable.
@@ -56,7 +30,7 @@ def _bootstrap_log_init(app_dir: Path) -> None:
     """
     global _BOOTSTRAP_LOG_FILE
 
-    app_dir = _resolve_app_root(Path(app_dir))
+    app_dir = Path(app_dir).resolve()
 
     override = os.environ.get("BOOTSTRAP_LOG", "").strip()
     if override:
@@ -169,39 +143,11 @@ def _uninstall_masterlib(py: str) -> None:
     _print("🧹 Uninstall existing masterlib…")
     _sh([py, "-m", "pip", "uninstall", "-y", "masterlib"], check=False, quiet=False)
 
-
-def _clip_log_text(s: str, limit: int = 4000) -> str:
-    s = (s or "").strip()
-    if len(s) <= limit:
-        return s
-    return s[:limit] + f"
-… (truncated, {len(s)-limit} chars more)"
-
-    def _sh(cmd: list[str], cwd: Path | None = None, check: bool = True, quiet: bool = False) -> subprocess.CompletedProcess:
-        log_cmds = os.environ.get("BOOTSTRAP_LOG_COMMANDS", "").strip() == "1"
-        if not quiet:
-            _print("▶ " + " ".join(cmd))
-        cp = subprocess.run(
-            cmd,
-            cwd=str(cwd) if cwd else None,
-            check=check,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-
-        # Best effort: log stdout/stderr for debugging or when the command failed.
-        if log_cmds or (cp.returncode != 0 and not quiet):
-            out = _clip_log_text(cp.stdout or "")
-            err = _clip_log_text(cp.stderr or "")
-            if out:
-                _print("↳ stdout:
-" + out)
-            if err:
-                _print("↳ stderr:
-" + err)
-
-        return cp
+def _sh(cmd: list[str], cwd: Path | None = None, check: bool = True, quiet: bool = False) -> subprocess.CompletedProcess:
+    if not quiet:
+        _print("▶ " + " ".join(cmd))
+    return subprocess.run(cmd, cwd=str(cwd) if cwd else None, check=check, text=True,
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 def _git(cwd: Path, args: list[str], check: bool = True, quiet: bool = False) -> subprocess.CompletedProcess:
     return _sh(["git", "-C", str(cwd), *args], check=check, quiet=quiet)
@@ -381,47 +327,16 @@ def ensure_masterlib_installed(py: str, masterlib_path: Path) -> None:
         raise SystemExit("Échec installation MasterLib (pip).")
 
 
-# ----------------------------
-# OO wrapper (optional)
-# ----------------------------
-
-@dataclass(frozen=True)
-class Bootstrap:
-    """Bootstrap minimal sous forme de classe.
-
-    Objectif :
-    - Encapsuler la configuration (app_dir/app_main/app_name)
-    - Préparer le terrain pour un futur 'bootstrapd' (superviseur en process séparé)
-    - Garder la compatibilité : run_project_cli() reste l’API publique.
-
-    Note :
-    - Le run() se termine par un os.execv() via _run_project_cli_impl(),
-      donc l'instance n'existe plus après lancement de l'app.
-    """
-
-    app_dir: Path
-    app_main: Path | None = None
-    app_name: str | None = None
-
-    def run(self) -> int:
-        return _run_project_cli_impl(app_dir=self.app_dir, app_main=self.app_main, app_name=self.app_name)
-
-
 def run_project_cli(*, app_dir: Path, app_main: Path | None = None, app_name: str | None = None) -> int:
-    """API publique (compat) — wrapper OO."""
-    return Bootstrap(app_dir=app_dir, app_main=app_main, app_name=app_name).run()
-
-def _run_project_cli_impl(*, app_dir: Path, app_main: Path | None = None, app_name: str | None = None) -> int:
     """
     One-call entrypoint for projects:
     - resolves MasterLib (local dev or cache)
     - installs it editable in the current env
     - launches app_main with the same interpreter
     """
-    if os.environ.get("BOOTSTRAP_SENTINEL", "").strip() == "1":
-        raise SystemExit("BOOTSTRAP_SENTINEL: run_project_cli reached")
+    raise SystemExit("BOOTSTRAP_SENTINEL: run_project_cli reached")
 
-    app_dir = _resolve_app_root(app_dir)
+    app_dir = app_dir.resolve()
     _bootstrap_log_init(app_dir)
     _print(f"🚀 Bootstrap start | app_dir={app_dir}")
     _print(f"🐍 Python: {sys.executable}")
