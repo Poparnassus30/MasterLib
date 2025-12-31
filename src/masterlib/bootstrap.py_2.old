@@ -4,8 +4,6 @@ import os
 import sys
 import shutil
 import subprocess
-import shlex
-import shutil
 from pathlib import Path
 from dataclasses import dataclass
 import time
@@ -21,7 +19,13 @@ _BOOTSTRAP_LOG_FILE: Path | None = None
 # ----------------------------
 
 def _resolve_app_root(app_dir: Path) -> Path:
-    """Normalise app_dir vers la racine du projet (heuristique)."""
+    """
+    Tente de normaliser app_dir vers la racine du projet.
+
+    Heuristiques (max 8 niveaux):
+    - si app_dir == "src" -> parent
+    - remonte tant qu'on ne trouve pas un marqueur projet (pyproject.toml, .git, main.py)
+    """
     p = Path(app_dir).expanduser().resolve()
     if p.name == "src" and p.parent.exists():
         p = p.parent
@@ -172,28 +176,28 @@ def _clip_log_text(s: str, limit: int = 4000) -> str:
         return s
     return s[:limit] + f"… (truncated, {len(s)-limit} chars more)"
 
+    def _sh(cmd: list[str], cwd: Path | None = None, check: bool = True, quiet: bool = False) -> subprocess.CompletedProcess:
+        log_cmds = os.environ.get("BOOTSTRAP_LOG_COMMANDS", "").strip() == "1"
+        if not quiet:
+            _print("▶ " + " ".join(cmd))
+        cp = subprocess.run(
+            cmd,
+            cwd=str(cwd) if cwd else None,
+            check=check,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
 
-def _sh(cmd: list[str], cwd: Path | None = None, check: bool = True, quiet: bool = False) -> subprocess.CompletedProcess:
-    log_cmds = os.environ.get("BOOTSTRAP_LOG_COMMANDS", "").strip() == "1"
-    if not quiet:
-        _print("▶ " + " ".join(cmd))
-    cp = subprocess.run(
-        cmd,
-        cwd=str(cwd) if cwd else None,
-        check=check,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-
-    if log_cmds or (cp.returncode != 0 and not quiet):
-        out = _clip_log_text(cp.stdout or "")
-        err = _clip_log_text(cp.stderr or "")
-        if out:
-            _print("↳ stdout:" + out)
-        if err:
-            _print("↳ stderr:" + err)
-    return cp
+        # Best effort: log stdout/stderr for debugging or when the command failed.
+        if log_cmds or (cp.returncode != 0 and not quiet):
+            out = _clip_log_text(cp.stdout or "")
+            err = _clip_log_text(cp.stderr or "")
+            if out:
+                _print("↳ stdout:" + out)
+            if err:
+                _print("↳ stderr:" + err)
+        return cp
 
 def _git(cwd: Path, args: list[str], check: bool = True, quiet: bool = False) -> subprocess.CompletedProcess:
     return _sh(["git", "-C", str(cwd), *args], check=check, quiet=quiet)
@@ -373,78 +377,37 @@ def ensure_masterlib_installed(py: str, masterlib_path: Path) -> None:
         raise SystemExit("Échec installation MasterLib (pip).")
 
 
-
 # ----------------------------
-# Dev UX helpers (terminal tabs)
+# OO wrapper (optional)
 # ----------------------------
 
-def _open_tabs_window(app_dir: Path, log_file: Path, kernel_argv: list[str]) -> bool:
+@dataclass(frozen=True)
+class Bootstrap:
+    """Bootstrap minimal sous forme de classe.
+
+    Objectif :
+    - Encapsuler la configuration (app_dir/app_main/app_name)
+    - Préparer le terrain pour un futur 'bootstrapd' (superviseur en process séparé)
+    - Garder la compatibilité : run_project_cli() reste l’API publique.
+
+    Note :
+    - Le run() se termine par un os.execv() via _run_project_cli_impl(),
+      donc l'instance n'existe plus après lancement de l'app.
     """
-    Ouvre une nouvelle fenêtre de terminal avec 2 onglets :
-    - Onglet 1 : suivi live du bootstrap.log (tail -f)
-    - Onglet 2 : exécution de l'application (app_main / masterkernel)
 
-    Déclenché via : BOOTSTRAP_TABS=1
-    Retourne True si une fenêtre a été ouverte, sinon False.
-    """
-    term = (
-        shutil.which("gnome-terminal")
-        or shutil.which("konsole")
-        or shutil.which("xfce4-terminal")
-        or shutil.which("tilix")
-        or shutil.which("xterm")
-    )
-    if not term:
-        _print("⚠️  Aucun terminal détecté (gnome-terminal/konsole/xfce4-terminal/tilix/xterm).")
-        return False
+    app_dir: Path
+    app_main: Path | None = None
+    app_name: str | None = None
 
-    log_q = shlex.quote(str(log_file))
-    kernel_cmd = "cd " + shlex.quote(str(app_dir)) + " && " + " ".join(shlex.quote(a) for a in kernel_argv) + " ; exec bash"
-    tail_cmd = f"tail -n 200 -f {log_q} ; exec bash"
-
-    if term.endswith("gnome-terminal"):
-        cmd = [
-            term,
-            "--window",
-            "--tab", "--title=bootstrap", "--", "bash", "-lc", tail_cmd,
-            "--tab", "--title=masterkernel", "--", "bash", "-lc", kernel_cmd,
-        ]
-        subprocess.Popen(cmd, cwd=str(app_dir))
-        return True
-
-    if term.endswith("konsole"):
-        cmd = [
-            term,
-            "--new-tab", "-p", "tabtitle=bootstrap", "-e", "bash", "-lc", tail_cmd,
-            "--new-tab", "-p", "tabtitle=masterkernel", "-e", "bash", "-lc", kernel_cmd,
-        ]
-        subprocess.Popen(cmd, cwd=str(app_dir))
-        return True
-
-    if term.endswith("xfce4-terminal"):
-        cmd = [
-            term,
-            "--tab", "--title=bootstrap", "-e", f"bash -lc {shlex.quote(tail_cmd)}",
-            "--tab", "--title=masterkernel", "-e", f"bash -lc {shlex.quote(kernel_cmd)}",
-        ]
-        subprocess.Popen(cmd, cwd=str(app_dir))
-        return True
-
-    if term.endswith("tilix"):
-        # Tilix: on ouvre une session, puis un split. Pas parfait mais utile.
-        cmd = [term, "-e", f"bash -lc {shlex.quote(tail_cmd)}"]
-        subprocess.Popen(cmd, cwd=str(app_dir))
-        cmd2 = [term, "-e", f"bash -lc {shlex.quote(kernel_cmd)}"]
-        subprocess.Popen(cmd2, cwd=str(app_dir))
-        return True
-
-    # xterm fallback (2 fenêtres)
-    subprocess.Popen([term, "-hold", "-e", "bash", "-lc", tail_cmd], cwd=str(app_dir))
-    subprocess.Popen([term, "-hold", "-e", "bash", "-lc", kernel_cmd], cwd=str(app_dir))
-    return True
+    def run(self) -> int:
+        return _run_project_cli_impl(app_dir=self.app_dir, app_main=self.app_main, app_name=self.app_name)
 
 
 def run_project_cli(*, app_dir: Path, app_main: Path | None = None, app_name: str | None = None) -> int:
+    """API publique (compat) — wrapper OO."""
+    return Bootstrap(app_dir=app_dir, app_main=app_main, app_name=app_name).run()
+
+def _run_project_cli_impl(*, app_dir: Path, app_main: Path | None = None, app_name: str | None = None) -> int:
     """
     One-call entrypoint for projects:
     - resolves MasterLib (local dev or cache)
@@ -498,18 +461,5 @@ def run_project_cli(*, app_dir: Path, app_main: Path | None = None, app_name: st
         raise SystemExit(f"APP_MAIN introuvable: {app_main}")
 
     _print(f"▶️  Launch: {app_main}")
-    argv = [py, str(app_main), *sys.argv[1:]]
-
-    # Dev UX : ouvrir une fenêtre avec 2 onglets (bootstrap log + kernel)
-    if os.environ.get("BOOTSTRAP_TABS", "").strip() == "1":
-        log_file = _BOOTSTRAP_LOG_FILE or (app_dir / "data/logs/bootstrap.log")
-        opened = _open_tabs_window(app_dir=app_dir, log_file=log_file, kernel_argv=argv)
-        if opened:
-            _print("🧭 Fenêtre avec onglets ouverte (bootstrap / masterkernel).")
-            _print("✅ BOOTSTRAP_TABS=1 : pas de exec(), retour au shell.")
-            return 0
-        _print("⚠️  BOOTSTRAP_TABS=1 demandé, mais impossible d'ouvrir un terminal. On continue en exec().")
-
-    os.execv(py, argv)
-
+    os.execv(py, [py, str(app_main), *sys.argv[1:]])
     return 0
