@@ -174,8 +174,7 @@ def _clip_log_text(s: str, limit: int = 4000) -> str:
     s = (s or "").strip()
     if len(s) <= limit:
         return s
-    return s[:limit] + f"
-… (truncated, {len(s)-limit} chars more)"
+    return s[:limit] + f"… (truncated, {len(s)-limit} chars more)"
 
     def _sh(cmd: list[str], cwd: Path | None = None, check: bool = True, quiet: bool = False) -> subprocess.CompletedProcess:
         log_cmds = os.environ.get("BOOTSTRAP_LOG_COMMANDS", "").strip() == "1"
@@ -195,12 +194,9 @@ def _clip_log_text(s: str, limit: int = 4000) -> str:
             out = _clip_log_text(cp.stdout or "")
             err = _clip_log_text(cp.stderr or "")
             if out:
-                _print("↳ stdout:
-" + out)
+                _print("↳ stdout:" + out)
             if err:
-                _print("↳ stderr:
-" + err)
-
+                _print("↳ stderr:" + err)
         return cp
 
 def _git(cwd: Path, args: list[str], check: bool = True, quiet: bool = False) -> subprocess.CompletedProcess:
