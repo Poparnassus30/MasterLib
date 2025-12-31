@@ -6,7 +6,7 @@ from typing import Any, Optional
 
 from .paths import build_paths, Paths
 from .system.system import System
-from .kernel.kernel import Kernel
+from .kernel.masterkernel import Kernel
 
 
 @dataclass
