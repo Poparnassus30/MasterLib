@@ -435,6 +435,48 @@ def _open_tabs_window(app_dir: Path, log_file: Path, kernel_argv: list[str]) -> 
             _print(f"   To attach: tmux attach -t {session_name}")
         return True
 
+    # Try screen as fallback
+    if shutil.which("screen"):
+        _print(f"🖥️  Using screen for sessions: {session_name}")
+        # Kill existing session if any
+        subprocess.run(["screen", "-S", session_name, "-X", "quit"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # Create new detached session with first window
+        r1 = subprocess.run(["screen", "-dmS", session_name, "bash", "-c", tail_cmd], check=False)
+        if r1.returncode != 0:
+            _print("⚠️  Failed to create screen session.")
+            return False
+        # Add second window
+        r2 = subprocess.run(["screen", "-S", session_name, "-X", "screen", "bash", "-c", kernel_cmd], check=False)
+        if r2.returncode != 0:
+            _print("⚠️  Failed to add screen window.")
+            return False
+        # If a terminal is available, open it with screen attach
+        term = (
+            shutil.which("gnome-terminal")
+            or shutil.which("konsole")
+            or shutil.which("xfce4-terminal")
+            or shutil.which("tilix")
+            or shutil.which("xterm")
+        )
+        if term:
+            attach_cmd = f"screen -r {session_name}"
+            if term.endswith("gnome-terminal"):
+                cmd = [term, "--", "bash", "-c", attach_cmd]
+            elif term.endswith("konsole"):
+                cmd = [term, "-e", "bash", "-c", attach_cmd]
+            elif term.endswith("xfce4-terminal"):
+                cmd = [term, "-e", attach_cmd]
+            elif term.endswith("tilix"):
+                cmd = [term, "-e", attach_cmd]
+            else:  # xterm
+                cmd = [term, "-e", "bash", "-c", attach_cmd]
+            subprocess.Popen(cmd, cwd=str(app_dir))
+            _print(f"🧭 Screen session created and terminal opened: {session_name}")
+        else:
+            _print(f"🧭 Screen session created (no GUI terminal): {session_name}")
+            _print(f"   To attach: screen -r {session_name}")
+        return True
+
     # Fallback to GUI terminals
     term = (
         shutil.which("gnome-terminal")
@@ -444,7 +486,7 @@ def _open_tabs_window(app_dir: Path, log_file: Path, kernel_argv: list[str]) -> 
         or shutil.which("xterm")
     )
     if not term:
-        _print("⚠️  Aucun terminal détecté (gnome-terminal/konsole/xfce4-terminal/tilix/xterm/tmux).")
+        _print("⚠️  Aucun terminal détecté (gnome-terminal/konsole/xfce4-terminal/tilix/xterm/tmux/screen).")
         return False
 
     if term.endswith("gnome-terminal"):
