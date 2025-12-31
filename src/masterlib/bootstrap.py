@@ -334,6 +334,8 @@ def run_project_cli(*, app_dir: Path, app_main: Path | None = None, app_name: st
     - installs it editable in the current env
     - launches app_main with the same interpreter
     """
+    raise SystemExit("BOOTSTRAP_SENTINEL: run_project_cli reached")
+
     app_dir = app_dir.resolve()
     _bootstrap_log_init(app_dir)
     _print(f"🚀 Bootstrap start | app_dir={app_dir}")
