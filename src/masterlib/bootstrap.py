@@ -387,6 +387,55 @@ def _open_tabs_window(app_dir: Path, log_file: Path, kernel_argv: list[str]) -> 
     Déclenché via : BOOTSTRAP_TABS=1
     Retourne True si une fenêtre a été ouverte, sinon False.
     """
+    log_q = shlex.quote(str(log_file))
+    kernel_cmd = "cd " + shlex.quote(str(app_dir)) + " && " + " ".join(shlex.quote(a) for a in kernel_argv) + " ; exec bash"
+    tail_cmd = f"tail -n 200 -f {log_q} ; exec bash"
+
+    session_name = f"bootstrap_{app_dir.name.replace('/', '_').replace(' ', '_')}"
+
+    # Try tmux first (works in headless)
+    if shutil.which("tmux"):
+        _print(f"🖥️  Using tmux for sessions: {session_name}")
+        # Kill existing session if any
+        subprocess.run(["tmux", "kill-session", "-t", session_name], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # Create new detached session with first window
+        r1 = subprocess.run(["tmux", "new-session", "-d", "-s", session_name, "-n", "bootstrap", "bash", "-c", tail_cmd], check=False)
+        if r1.returncode != 0:
+            _print("⚠️  Failed to create tmux session.")
+            return False
+        # Add second window
+        r2 = subprocess.run(["tmux", "new-window", "-t", session_name, "-n", "masterkernel", "bash", "-c", kernel_cmd], check=False)
+        if r2.returncode != 0:
+            _print("⚠️  Failed to add tmux window.")
+            return False
+        # If a terminal is available, open it with tmux attach
+        term = (
+            shutil.which("gnome-terminal")
+            or shutil.which("konsole")
+            or shutil.which("xfce4-terminal")
+            or shutil.which("tilix")
+            or shutil.which("xterm")
+        )
+        if term:
+            attach_cmd = f"tmux attach -t {session_name}"
+            if term.endswith("gnome-terminal"):
+                cmd = [term, "--", "bash", "-c", attach_cmd]
+            elif term.endswith("konsole"):
+                cmd = [term, "-e", "bash", "-c", attach_cmd]
+            elif term.endswith("xfce4-terminal"):
+                cmd = [term, "-e", attach_cmd]
+            elif term.endswith("tilix"):
+                cmd = [term, "-e", attach_cmd]
+            else:  # xterm
+                cmd = [term, "-e", "bash", "-c", attach_cmd]
+            subprocess.Popen(cmd, cwd=str(app_dir))
+            _print(f"🧭 Tmux session created and terminal opened: {session_name}")
+        else:
+            _print(f"🧭 Tmux session created (no GUI terminal): {session_name}")
+            _print(f"   To attach: tmux attach -t {session_name}")
+        return True
+
+    # Fallback to GUI terminals
     term = (
         shutil.which("gnome-terminal")
         or shutil.which("konsole")
@@ -395,12 +444,8 @@ def _open_tabs_window(app_dir: Path, log_file: Path, kernel_argv: list[str]) -> 
         or shutil.which("xterm")
     )
     if not term:
-        _print("⚠️  Aucun terminal détecté (gnome-terminal/konsole/xfce4-terminal/tilix/xterm).")
+        _print("⚠️  Aucun terminal détecté (gnome-terminal/konsole/xfce4-terminal/tilix/xterm/tmux).")
         return False
-
-    log_q = shlex.quote(str(log_file))
-    kernel_cmd = "cd " + shlex.quote(str(app_dir)) + " && " + " ".join(shlex.quote(a) for a in kernel_argv) + " ; exec bash"
-    tail_cmd = f"tail -n 200 -f {log_q} ; exec bash"
 
     if term.endswith("gnome-terminal"):
         cmd = [
