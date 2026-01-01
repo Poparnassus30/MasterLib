@@ -1,0 +1,388 @@
+CONTRAT UNIVERSEL "MASTERMODULE" (ASCII / FR)
+
+FICHIER (REFERENCE) :
+mastermodule_contrat.txt (ou MasterLib/core/mastermodule_contrat.py en commentaire)
+
+BUT
+Definir un contrat unique pour tous les modules executables.
+Ce contrat permet :
+
+execution isolee (standalone)
+
+execution orchestree (par un hote / runtime / kernel)
+
+supervision fiable (handshake + statut + arret propre)
+
+integration reseau (publication d evenements, baux, permissions)
+
+UN "MASTERMODULE" EST
+Un sous-programme autonome qui :
+
+demarre et s arrete proprement
+
+expose un point de communication standard (IPC)
+
+repond a un handshake de disponibilite
+
+publie des evenements normalises
+
+execute des jobs normalises
+
+declare ses capacites
+
+respecte la gouvernance (permissions / bail / offline policy)
+
+MODES D EXECUTION
+
+MODE A : STANDALONE (DEV/TEST)
+
+lance manuellement dans un terminal
+
+charge sa config locale
+
+demarre son serveur IPC
+
+accepte jobs via IPC
+
+peut s arreter via commande IPC ou CTRL+C
+
+MODE B : ORCHESTRE (PROD)
+
+lance par un hote (ManagerSubprocess / runtime)
+
+handshake obligatoire
+
+enregistrement dans registre seulement si "READY"
+
+arret propre pilote par l hote
+
+REGLE :
+Un module doit fonctionner dans les deux modes sans changer son code coeur.
+Seuls les "adaptateurs" de lancement peuvent varier.
+
+IDENTITE DU MODULE (METADONNEES OBLIGATOIRES)
+
+Chaque module doit pouvoir produire un "DESCRIPTEUR MODULE" (statique) :
+
+nom_module (ex: module_ia)
+
+type_module (capacite / integration / interface / service)
+
+version_module (semver ou hash)
+
+auteur (optionnel)
+
+description_courte (1 ligne)
+
+capacites (liste)
+
+dependances_services (liste de services requis)
+
+politique_offline (autorise / degrade / interdit)
+
+endpoints (ipc, http, etc. si existant)
+
+DONNEE D IDENTITE D EXECUTION (dynamique) :
+
+instance_id (uuid genere au demarrage)
+
+pid (pid systeme)
+
+demarrage_timestamp
+
+etat (STARTING / READY / BUSY / DEGRADED / STOPPING / STOPPED / ERROR)
+
+derniere_erreur (si applicable)
+
+bail_id (si module affilie reseau)
+
+bail_expiration (si applicable)
+
+COMMUNICATION STANDARD (IPC MINIMAL)
+
+Chaque module doit exposer un canal IPC local (minimum) :
+
+socket UNIX recommande sur Linux
+
+sinon TCP local si necessaire (mais par defaut UNIX)
+
+Le protocole est base sur messages "requete/reponse" en JSON.
+
+FORMAT GENERIQUE MESSAGE (REQUETE) :
+
+{
+"msg_id": "uuid",
+"type": "HELLO | STATUS | JOB_RUN | EVENT_PUBLISH | STOP | PING",
+"payload": { ... },
+"meta": {
+"sender": "runtime | reinerouge | module_x",
+"timestamp": "iso8601",
+"trace_id": "uuid optionnel",
+"auth": { ... optionnel ... }
+}
+}
+
+FORMAT GENERIQUE MESSAGE (REPONSE) :
+
+{
+"msg_id": "uuid",
+"ok": true|false,
+"type": "HELLO_ACK | STATUS_ACK | JOB_RESULT | EVENT_ACK | STOP_ACK | PONG",
+"payload": { ... },
+"error": {
+"code": "string",
+"message": "string",
+"details": { ... optionnel ... }
+}
+}
+
+REGLE :
+
+msg_id doit etre renvoye tel quel dans la reponse
+
+ok=false implique error.code et error.message non vides
+
+payload doit rester stable (pas de changements sauvages)
+
+HANDSHAKE (OBLIGATOIRE EN MODE ORCHESTRE)
+
+OBJECTIF :
+Permettre a l hote de verifier que le module est vraiment operationnel
+avant de l enregistrer dans le registre et de lui envoyer des jobs.
+
+SEQUENCE MINIMALE :
+
+L hote lance le module (subprocess)
+
+Le module demarre IPC et passe etat STARTING
+
+L hote envoie HELLO
+
+Le module repond HELLO_ACK avec :
+
+instance_id
+
+pid
+
+version_module
+
+capacites
+
+etat (READY si pret)
+
+endpoints (chemin socket, etc.)
+
+L hote envoie STATUS pour confirmer
+
+Si READY : l hote enregistre le module dans son registre
+
+COMMANDE : HELLO
+
+payload attendu :
+{
+"expected_module": "nom_module optionnel",
+"require_capabilities": [ ... optionnel ... ]
+}
+
+REPONSE : HELLO_ACK
+
+payload attendu :
+{
+"nom_module": "...",
+"instance_id": "...",
+"pid": 1234,
+"version_module": "...",
+"etat": "READY|DEGRADED|ERROR",
+"capacites": [ ... ],
+"endpoints": { "ipc": "path_or_host" }
+}
+
+REGLE :
+
+si le module n est pas pret, etat doit rester STARTING ou DEGRADED
+
+l hote peut re-tenter STATUS pendant un delai court
+
+si ERROR, l hote arrete le module
+
+STATUT (SUPERVISION)
+
+COMMANDE : STATUS
+REPONSE : STATUS_ACK
+
+payload STATUS_ACK doit contenir au minimum :
+{
+"etat": "STARTING|READY|BUSY|DEGRADED|STOPPING|STOPPED|ERROR",
+"uptime_sec": 0,
+"pid": 0,
+"instance_id": "...",
+"last_error": { ... optionnel ... },
+"health": {
+"cpu": "... optionnel ...",
+"mem": "... optionnel ...",
+"queue_jobs": 0,
+"last_job_time": "... optionnel ..."
+}
+}
+
+REGLE :
+
+STATUS doit etre rapide et non bloquant
+
+STATUS ne doit pas declencher de travail lourd
+
+EXECUTION DE JOB (JOB_RUN / JOB_RESULT)
+
+Un module execute des jobs sous forme de messages normalises.
+
+COMMANDE : JOB_RUN
+payload attendu :
+{
+"job_id": "uuid",
+"job_type": "string",
+"priority": 0,
+"timeout_sec": 0,
+"inputs": { ... },
+"constraints": { ... optionnel ... },
+"context": { ... optionnel ... }
+}
+
+REPONSE : JOB_RESULT
+payload attendu :
+{
+"job_id": "uuid",
+"job_type": "string",
+"ok": true|false,
+"outputs": { ... },
+"metrics": {
+"start": "iso8601",
+"end": "iso8601",
+"duration_ms": 0,
+"cost": 0.0,
+"tokens": 0
+},
+"error": { ... optionnel ... }
+}
+
+REGLES :
+
+job_id unique
+
+le module doit gerer timeout_sec si possible
+
+en cas d echec : ok=false + error details
+
+metrics doit etre fourni au maximum des possibilites
+
+PUBLICATION D EVENEMENTS (EVENT_PUBLISH)
+
+But : alimenter le registre et la trace (evenements, erreurs, metriques).
+
+COMMANDE : EVENT_PUBLISH
+payload attendu :
+{
+"event_id": "uuid",
+"event_type": "INFO|WARN|ERROR|METRIC|AUDIT",
+"topic": "string",
+"data": { ... },
+"severity": 0,
+"timestamp": "iso8601"
+}
+
+REPONSE : EVENT_ACK
+payload attendu :
+{
+"event_id": "uuid",
+"accepted": true|false
+}
+
+REGLES :
+
+un module doit pouvoir publier sans bloquer son execution principale
+
+l hote peut refuser si non autorise (accepted=false)
+
+ARRET PROPRE (STOP / STOP_ACK)
+
+COMMANDE : STOP
+payload attendu :
+{
+"reason": "string",
+"timeout_sec": 0,
+"force": false
+}
+
+REPONSE : STOP_ACK
+payload attendu :
+{
+"etat": "STOPPING|STOPPED",
+"message": "string"
+}
+
+REGLES :
+
+arret propre = fermer IPC, stopper threads, fermer fichiers, liberer ressources
+
+si timeout depasse, l hote peut forcer terminate/kill
+
+un module doit traiter CTRL+C comme STOP (autant que possible)
+
+AUTH / PERMISSIONS / BAIL (OPTIONNEL MAIS NORMALISE)
+
+Certains modules doivent exiger un bail (lease) pour etre operationnels
+(ex: module_reinerouge patriote).
+
+CONCEPT :
+
+sans bail valide => mode LOCKED (refus JOB_RUN)
+
+bail court renouvelable
+
+CHAMPS NORMALISES DANS meta.auth :
+{
+"node_id": "...",
+"bail_id": "...",
+"signature": "...",
+"nonce": "...",
+"timestamp": "iso8601"
+}
+
+STATUT doit exposer :
+
+bail_id
+
+bail_expiration
+
+mode_locked true/false
+
+REGLES DE QUALITE (OBLIGATOIRES)
+
+Logs :
+chaque module doit logger demarrage, handshake, jobs, erreurs, arret
+
+Config :
+chaque module doit pouvoir charger une config locale par defaut
+et accepter une config fournie par l hote (override)
+
+Robustesse :
+ne pas planter sur un message inconnu => repondre ok=false (code=UNKNOWN_TYPE)
+
+Determinisme :
+le contrat de message ne doit pas changer sans bump de version
+
+Documentation :
+chaque fichier module principal doit contenir un descripteur ASCII
+exploitable par un outil "manuel.py" (extracteur)
+
+CHECKLIST D IMPLEMENTATION (POUR CODER)
+
+Un MasterModule est conforme si :
+
+[ ] demarre en standalone
+[ ] expose un endpoint IPC
+[ ] repond a HELLO / STATUS / STOP
+[ ] declare nom_module, version, capacites
+[ ] execute JOB_RUN -> JOB_RESULT
+[ ] publie EVENT_PUBLISH -> EVENT_ACK
+[ ] arrete proprement (ressources liberees)
+[ ] (si besoin) applique bail/permissions et lock offline
