@@ -20,7 +20,7 @@ def _make_bootstrap_logger(app_dir: Path, app_name: str) -> logging.Logger:
     Logger unique bootstrap / launcher.
     Toute la phase de démarrage passe ici.
     """
-    log_dir = app_dir / "data" / "log"
+    log_dir = app_dir / "data" / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
 
     log_file = log_dir / "bootstrap.log"
@@ -92,3 +92,4 @@ def run_project_cli(app_dir: Path, app_name: Optional[str] = None) -> int:
 
     finally:
         after_launcher_stop(app_dir)
+        

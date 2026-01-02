@@ -95,13 +95,19 @@ class Launcher:
         env = os.environ.copy()
         env["APP_DIR"] = str(self.cfg.app_dir)
 
-        cmd = [self.cfg.python, "-m", "masterkernel.runtime"]
+        main_py = self.cfg.app_dir / "main.py"
+        cmd = [self.cfg.python, str(main_py)]
+
         self._log(f"▶ start kernel: {' '.join(cmd)}")
 
         self.proc = subprocess.Popen(
             cmd,
             cwd=str(self.cfg.app_dir),
             env=env,
+            
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
         )
 
         self._log(f"▶ kernel pid={self.proc.pid}")
@@ -118,6 +124,14 @@ class Launcher:
 
             # future: check_update(), watchdog, bus, etc.
             time.sleep(0.5)
+
+        out, err = self.proc.communicate()
+        if out:
+            self.log("KERNEL STDOUT:\n" + out)
+        if err:
+            self.log("KERNEL STDERR:\n" + err)
+        return self.proc.returncode
+
 
     # =========================
     # === SETUP INTERNE =======
