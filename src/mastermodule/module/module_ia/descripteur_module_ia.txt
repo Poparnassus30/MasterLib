@@ -1,0 +1,104 @@
+------------------------------------------------------------
+DESCRIPTEUR : MODULE_IA (CAPACITE - CONNECTEURS + ROUTAGE + PACK MEMOIRE)
+------------------------------------------------------------
+
+FICHIER :
+module_ia.py (ou modules/ia/module_ia.py)
+
+TYPE :
+Module de capacite cognitive (organe)
+
+NIVEAU :
+Niveau 2 - Capacite
+
+OBJECTIF
+Fournir une interface unique pour utiliser plusieurs fournisseurs IA
+comme "hemispheres", avec :
+- connecteurs providers
+- routage vers le meilleur modele
+- construction de packs memoire sous budget tokens
+- evaluation des sorties + metriques
+
+ROLE DANS L ECOSYSTEME
+- ReineRouge possede la memoire long terme (source de verite).
+- module_IA fabrique le contexte court terme adapte a chaque job,
+  puis execute l appel IA et renvoie resultats + metriques + suggestions.
+
+ENTITES PRINCIPALES (A CODER)
+- Classe ModuleIA (facade)
+- Classe ConnecteurIABase (contrat)
+- Connecteurs concrets :
+  - ConnecteurOpenAI
+  - ConnecteurAnthropic
+  - ConnecteurGoogle
+  - etc
+- Classe RouteurIA (selection modeles)
+- Classe EvaluateurIA (score)
+- Classe ConstructeurPackMemoire (pack)
+
+INTERFACES PRINCIPALES (MAPPABLES EN METHODES)
+
+1) Gestion des modeles / providers
+- enregistrer un provider
+- tester disponibilite
+- lister modeles et capacites
+METHODES ATTENDUES :
+- provider_ajouter(nom, connecteur)
+- provider_tester(nom)
+- modeles_lister()
+- capacites_lister()
+
+2) Construction du pack memoire (budget tokens)
+- fabriquer un pack adapte a la tache :
+  policy + situation + resume + faits + extraits
+- option : fournir un outil de retrieval plutot que tout injecter
+METHODES ATTENDUES :
+- pack_construire(tache, contexte, budget_tokens)
+- pack_budget_calculer(budget_tokens)
+- pack_extraits_selectionner(query, limites)
+- pack_faits_inclure(faits)
+- pack_resume_inclure(resume)
+
+3) Routage (choix meilleur hemispheres)
+- choisir modele(s) selon categorie + contraintes + perf historique
+- strategies : simple, multi, vote, jury, fallback
+METHODES ATTENDUES :
+- routage_choisir(tache, contraintes)
+- routage_strategie_appliquer(strategie, candidats)
+- routage_ordre_priorite(candidats)
+
+4) Execution d un job IA
+- appeler un modele via connecteur
+- gerer erreurs et fallback
+- capturer metriques
+METHODES ATTENDUES :
+- job_ia_executer(tache, pack, modele)
+- job_ia_fallback(tache, pack, liste_modeles)
+- metriques_capturer(debut, fin, tokens, cout)
+- erreur_normaliser(erreur)
+
+5) Evaluation et profilage
+- noter la reponse (qualite utilite coherence)
+- enregistrer la perf par categorie
+- proposer mises a jour memoire (faits/extraits utiles)
+METHODES ATTENDUES :
+- evaluer_reponse(tache, reponse)
+- profil_mettre_a_jour(modele, categorie, score)
+- suggestion_faits(reponse)
+- suggestion_extraits(reponse)
+
+MODE STANDALONE (DEV/TEST)
+Le module_IA doit pouvoir tourner seul.
+- config locale
+- stockage minimal local (optionnel)
+- IPC : status / ask / list / shutdown
+METHODES ATTENDUES :
+- demarrer_standalone()
+- ipc_ecouter()
+- ipc_traiter_message(msg)
+- arreter_proprement()
+
+LIMITES ET FRONTIERES
+- module_IA ne doit pas devenir la memoire souveraine
+- il doit rester un organe appelable localement ou via reseau
+------------------------------------------------------------
