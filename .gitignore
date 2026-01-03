@@ -1,17 +1,81 @@
+# =========================
+# Python / Packaging
+# =========================
 __pycache__/
-*.pyc
-
-.venv/
-
-dist/
+*.py[cod]
+*$py.class
 
 build/
-
+dist/
 *.egg-info/
+.eggs/
+pip-wheel-metadata/
+.wheels/
 
-.data/
+# Virtualenvs
+.venv/
+venv/
+ENV/
+env/
 
+# =========================
+# Configuration files
+# =========================
+config/config.ini
+config/*.
+
+# =========================
+# Tests / coverage
+# =========================
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+
+# =========================
+# IDE / Editors
+# =========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tmp
+.DS_Store
+
+# =========================
+# Logs / runtime files
+# =========================
 data/
+logs/
+*.log
 
-*.txt
+# Your app generated files (if you don't want them versioned)
+config/registre_json.json
+config/*.bak
+config/*.tmp
 
+# Sockets / pid
+*.pid
+*.sock
+*.socket
+/tmp/
+*.lock
+
+# =========================
+# OS junk
+# =========================
+Thumbs.db
+
+# =========================
+# Optional: secrets
+# =========================
+*.env
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.pfx
+secrets/

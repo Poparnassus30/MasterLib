@@ -1,4 +1,4 @@
-# src/masterlib/bootstrap/bootstrap.py
+# src/masterboot/controller.py
 
 from __future__ import annotations
 

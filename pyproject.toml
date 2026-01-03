@@ -19,4 +19,8 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[project.scripts]
+master = "masterboot.cli:main"
+masterboot = "masterboot.cli:main"
+
 

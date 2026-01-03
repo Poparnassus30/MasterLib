@@ -1,0 +1,148 @@
+MASTERBOOT_SEQUENCE.txt
+
+OBJET: Définir la séquence OFFICIELLE de démarrage d’un projet via MasterLib.
+Ce fichier est la référence humaine de l’architecture de boot.
+Il sert à ne jamais perdre le fil logique du démarrage.
+
+POSITION DANS L’ARCHITECTURE :
+    mastercli -> interface humaine (CLI)
+    masterboot -> contrôleur de démarrage et de survie
+    masterkernel -> noyau système (registre + bus)
+    masterboot est le PROCESSUS DE CONTRÔLE.
+
+PRINCIPES FONDAMENTAUX :
+    1/ Un projet est un DOSSIER, pas une application Python
+    2/ config_projet.ini est l’identité du projet
+    3/ Le registre du masterkernel est la vérité runtime
+    4/ masterboot pilote, masterkernel décide
+    5/masterkernel peut survivre à masterboot
+    6/ masterboot doit pouvoir redémarrer et se reconnecter
+    7/ Toute opération doit être idempotente
+
+POINT D’ENTRÉE UTILISATEUR
+    Commande unique :
+        master start [nom_du_projet]
+        Cette commande appelle masterboot.Controller.
+
+PHASE 0 : RÉSOLUTION DU CONTEXTE
+    Responsable : masterboot
+    Etapes:
+        1/ Réception des paramètres depuis le CLI
+        2/ Détermination du mode d’entrée :
+            CAS A : config_projet.ini présent dans le dossier courant
+            CAS B : nom_du_projet fourni en argument
+            SINON : erreur claire et arrêt
+        3/ Résolution des chemins :
+            - nom du projet
+            - dossier racine du projet
+            - chemin vers config_projet.ini
+
+PHASE 1 : IDENTITÉ DU PROJET
+    Responsable : masterboot
+    CAS A : config_projet.ini EXISTE
+        1/ Charger le fichier
+        2/ Lire :
+            - project.name
+            - project.project_id
+            - project.workspace
+        3/ Le projet est considéré comme CONNU
+    CAS B : config_projet.ini ABSENT
+        1/ Interroger le registre du masterkernel
+        2/ Si projet existant :
+            - afficher le chemin du config_projet.ini
+            - arrêt propre
+        3/ Si projet inexistant :
+            - créer le dossier projet
+            - générer config_projet.ini
+            - générer project_id unique
+            - continuer la séquence
+
+PHASE 2 : PRÉPARATION DU WORKSPACE
+    Responsable : masterboot
+    Arborescence minimale (idempotente) :
+        - data/
+        - data/logs/
+        - data/kernel/
+        - data/runtime/
+        - data/registre/
+    Actions :
+        - créer les dossiers manquants
+        - ouvrir data/logs/masterboot.log
+        - écrire l’événement BOOT_START
+        - Aucune logique kernel ici.
+
+PHASE 3 : DÉMARRAGE / RECONNEXION MASTERKERNEL
+    Responsable : masterboot
+    1/ Vérifi er si un masterkernel correspondant au project_id est actif
+        - via bus
+        - via registre
+    2/ Si actif :
+        - connexion
+        - passer à la phase suivante
+    3/ Si inactif :
+        - démarrer masterkernel dans un processus indépendant
+        - transmettre :
+            - project_id
+            - workspace
+            - paramètres bus
+    4/ Attendre l’état READY (timeout + retries)
+
+PHASE 4 : SYNCHRONISATION AVEC LE REGISTRE
+    Responsable : masterkernel
+    RÈGLE ABSOLUE :Le registre du kernel est la vérité.
+    Etapes : 
+    1/ masterboot interroge le registre
+    2/ Si projet connu :
+        - reconnexion
+
+    3/ Si projet inconnu :
+        - enregistrement du projet
+    4/ Émission d’événements :
+        - PROJECT_REGISTERED
+        - PROJECT_RECONNECTED
+
+PHASE 5 : ÉTAT RUNNING
+    Responsables : masterboot + masterkernel
+    Actions :
+        - masterboot entre en boucle de supervision
+        - masterkernel devient autonome
+        - le projet est considéré comme ACTIF
+    Fichiers mis à jour :
+        - data/runtime/status.json
+        - logs masterboot / masterkernel
+
+PHASE 6 : BOUCLE DE SUPERVISION
+    Responsable : masterboot
+    Boucle continue :
+        - healthcheck masterkernel
+        - surveillance du bus
+        - reconnexion automatique si nécessaire
+        - redémarrage kernel possible
+    masterboot peut être stoppé et relancé sans casser le projet.
+
+PHASE 7 : ARRÊT
+    Arrêt normal :
+        1/ master stop
+        2/ ordre envoyé au kernel
+        3/ confirmation
+        4/ arrêt propre
+
+    Arrêt brutal :
+        - masterkernel peut survivre
+        - prochain master start = reconnexion
+
+RÈGLES D’OR:
+    - masterboot ne contient PAS de logique métier
+    - masterboot ne modifie PAS le registre directement
+    - masterkernel est la seule source de vérité
+    - config_projet.ini est l’identité humaine du projet
+    - aucun code Python dans les dossiers projet
+
+RÉSUMÉ
+
+master start
+-> résolution projet
+-> préparation workspace
+-> démarrage ou reconnexion masterkernel
+-> supervision
+-> registre = vérité
