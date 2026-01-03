@@ -1,0 +1,133 @@
+BUT
+
+Démarrer un projet (ex: reinerouge) via MasterLib avec une commande unique.
+MasterLib fournit la commande master qui crée/reconnecte le projet et démarre le masterkernel.
+
+RAPPEL ARCHITECTURE
+
+mastercli : commande master
+
+masterboot : contrôleur de démarrage + supervision
+
+masterkernel: noyau (registre + bus)
+
+Le projet est un DOSSIER (workspace), pas une app Python.
+
+MODE DEV (PC perso / développement)
+
+A) Installer MasterLib en mode dev (editable)
+
+Cloner MasterLib :
+cd ~/github
+git clone <URL_MasterLib>
+cd MasterLib
+
+Créer une venv :
+python -m venv .venv
+source .venv/bin/activate
+
+Installer MasterLib :
+pip install -U pip
+pip install -e .
+
+Vérifier :
+which master
+master --help
+
+B) Créer un projet workspace et démarrer
+
+Créer un dossier projet :
+cd ~/github
+mkdir reinerouge
+cd reinerouge
+
+Démarrer :
+master start reinerouge --project-root .
+
+Résultat attendu :
+
+création de config_projet.ini (si absent)
+
+création de data/ (logs/kernel/runtime/registre)
+
+démarrage ou reconnexion du masterkernel
+
+C) Relancer plus tard (reconnexion)
+cd ~/github/reinerouge
+master start
+
+MODE PROD (Ubuntu Server dédié / service systemd)
+
+Objectif :
+
+ReineRouge tourne en service root (ou utilisateur dédié)
+
+Démarrage automatique au boot
+
+Redémarrage automatique en cas de crash
+
+A) Installer MasterLib (recommandé dans /opt)
+
+Créer le dossier :
+sudo mkdir -p /opt/masterlib
+sudo chown -R root:root /opt/masterlib
+
+Cloner MasterLib :
+sudo git clone <URL_MasterLib> /opt/masterlib
+
+Créer une venv dédiée :
+cd /opt/masterlib
+sudo python -m venv .venv
+sudo ./.venv/bin/pip install -U pip
+sudo ./.venv/bin/pip install -e .
+
+B) Créer le workspace projet (données persistantes)
+
+Créer le dossier :
+sudo mkdir -p /var/lib/reinerouge
+sudo mkdir -p /var/log/reinerouge
+
+C) Lancer manuellement une première fois (test)
+sudo /opt/masterlib/.venv/bin/master start reinerouge --project-root /var/lib/reinerouge
+
+D) Activer le service systemd (exemple)
+
+Créer le fichier :
+sudo nano /etc/systemd/system/reinerouge.service
+
+Contenu minimal :
+
+[Unit]
+Description=ReineRouge (MasterLib)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/lib/reinerouge
+ExecStart=/opt/masterlib/.venv/bin/master start reinerouge --project-root /var/lib/reinerouge
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+
+Charger + activer :
+sudo systemctl daemon-reload
+sudo systemctl enable reinerouge
+sudo systemctl start reinerouge
+
+Logs :
+sudo journalctl -u reinerouge -f
+
+NOTES IMPORTANTES
+
+config_projet.ini est la clé d’identité du projet.
+
+Le registre du kernel reste la vérité runtime.
+
+master start est idempotent : relancer ne recrée pas le projet.
+
+En DEV, tu peux garder workspace + logs dans le dossier projet.
+
+En PROD, recommande /var/lib/<projet> pour les données.
