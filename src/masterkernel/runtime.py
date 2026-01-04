@@ -31,3 +31,32 @@ def run(
 
     kernel = Kernel(ctx)
     return kernel.run()
+
+def main(argv: Optional[list[str]] = None) -> int:
+    """
+    Point d’entrée CLI de masterkernel.
+    Permet: python -m masterkernel.runtime --project-root <path>
+    """
+    import argparse
+
+    p = argparse.ArgumentParser(prog="masterkernel")
+    p.add_argument("--project-root", default=".", help="Racine du projet (workspace)")
+    p.add_argument("--app-name", default=None, help="Nom logique de l'app (sinon déduit)")
+    p.add_argument("--paths-mode", default="auto", choices=["auto", "local", "xdg"], help="Mode de Paths")
+    args = p.parse_args(argv)
+
+    class DefaultAppCore:
+        # minimal: le kernel a juste besoin d’un objet
+        name = args.app_name or "masterkernel"
+
+    return run(
+        DefaultAppCore(),
+        app_name=args.app_name or "masterkernel",
+        app_root=args.project_root,
+        paths_mode=args.paths_mode,
+    )
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
