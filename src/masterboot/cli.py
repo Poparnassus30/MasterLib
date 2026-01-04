@@ -46,6 +46,8 @@ import argparse
 import os
 import sys
 from pathlib import Path
+import traceback
+
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -193,7 +195,24 @@ def _cmd_start(args: argparse.Namespace) -> int:
         project_name=project_name,
         config_path=config_path,
     )
-    return ctl.start()
+
+    try:
+        return ctl.start()
+    except Exception as e:
+        tb = traceback.format_exc()
+        _print(f"[BOOT] ❌ erreur: {e!r}")
+        print(tb)
+        return 1
+
+    """
+    try:
+        # si paths est dispo, log direct
+        from .controller import _log
+        _log(ctl.paths, tb)
+    except Exception:
+        pass
+    raise
+    """
 
 
 def _cmd_status(args: argparse.Namespace) -> int:
@@ -219,7 +238,7 @@ def _cmd_status(args: argparse.Namespace) -> int:
 def _cmd_stop(args: argparse.Namespace) -> int:
     project_root = _resolve_project_root(args.project_root)
     config_path = _resolve_config_path(project_root, args.config_path)
-    project_name = args.project_name
+    project_name = args.project_name or project_root.name
 
     from masterboot.controller import ProjectController  # type: ignore
 
@@ -233,7 +252,7 @@ def _cmd_stop(args: argparse.Namespace) -> int:
 
 def _cmd_init(args: argparse.Namespace) -> int:
     project_root = _resolve_project_root(args.project_root)
-    project_name = args.project_name
+    project_name = args.project_name or project_root.name
 
     from masterboot.controller import ProjectController  # type: ignore
 

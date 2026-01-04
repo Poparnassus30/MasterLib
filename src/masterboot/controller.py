@@ -24,8 +24,17 @@ from pathlib import Path
 from typing import Optional
 
 
-@dataclass(frozen=True)
+@dataclass
 class BootPaths:
+    """
+    Chemins standard du workspace d’un projet.
+
+    Tout est relatif à project_root.
+    On garde volontairement la V0 simple :
+    - data/logs/ : logs boot + kernel
+    - data/runtime/ : pid, commandes, etc.
+    - data/scan/ : sorties de scripts (tree, scans, etc.)
+    """
     project_root: Path
 
     @property
@@ -54,7 +63,7 @@ class BootPaths:
 
     @property
     def pid_file(self) -> Path:
-        return self.runtime / "kernel.pid"
+        return self.runtime / "masterkernel.pid"
 
 
 def _append_line(path: Path, line: str) -> None:
@@ -83,7 +92,7 @@ def _run_prepare_workspace_sh(project_root: Path, paths: BootPaths) -> None:
     """
     # script installé dans MasterLib/src/masterboot/scripts/prepare_workspace.sh
     here = Path(__file__).resolve()
-    repo_root = here.parents[3]  # .../MasterLib
+    repo_root = here.parents[2]  # .../MasterLib
     script = repo_root / "src" / "masterboot" / "scripts" / "prepare_workspace.sh"
 
     if not script.exists():
@@ -140,6 +149,7 @@ class ProjectController:
     - stop() : terminate (V0)
     - init_project() : V0 = crée juste le workspace (le scaffolding métier viendra après)
     """
+    @staticmethod
     def _confirm_before_start(paths: BootPaths, project_name: str, project_root: Path) -> bool:
         """
         Safety prompt (opt-in).
@@ -170,16 +180,20 @@ class ProjectController:
 
         _log(paths, f"[BOOT] confirm={ans!r} -> abort (kernel not started)")
         return False
+
     def __init__(
         self,
         project_root: Path,
         project_name: str,
         config_path: Optional[Path] = None,
     ) -> None:
-        self.project_root = project_root
-        self.project_name = project_name
+        self.project_root = Path(project_root).resolve()
+        self.project_name = (project_name or self.project_root.name).strip()
+
         # Chemin du fichier de config projet (par défaut dans le root du projet)
-        self.config_path = config_path or (project_root / "config_projet.ini")
+        self.config_path = Path(config_path).resolve() if config_path else (self.project_root / "config_projet.ini")
+
+        self.paths = BootPaths(self.project_root)
 
     def init_project(self) -> None:
         _ensure_workspace(self.paths)
@@ -198,8 +212,8 @@ class ProjectController:
         # optionnel : tree + snapshot
         _run_prepare_workspace_sh(self.project_root, self.paths)
 
-        if not _confirm_before_start(self.paths, self.project_name, self.project_root):
-            return 0
+        if not self._confirm_before_start(self.paths, self.project_name, self.project_root):
+            return 1
 
         # start kernel
         p = _start_kernel(self.project_root, self.paths)
