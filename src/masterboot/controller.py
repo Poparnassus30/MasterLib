@@ -21,6 +21,7 @@ import time
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -169,11 +170,16 @@ class ProjectController:
 
         _log(paths, f"[BOOT] confirm={ans!r} -> abort (kernel not started)")
         return False
-
-    def __init__(self, project_root: Path, project_name: str):
-        self.project_root = project_root.resolve()
+    def __init__(
+        self,
+        project_root: Path,
+        project_name: str,
+        config_path: Optional[Path] = None,
+    ) -> None:
+        self.project_root = project_root
         self.project_name = project_name
-        self.paths = BootPaths(project_root=self.project_root)
+        # Chemin du fichier de config projet (par défaut dans le root du projet)
+        self.config_path = config_path or (project_root / "config_projet.ini")
 
     def init_project(self) -> None:
         _ensure_workspace(self.paths)
