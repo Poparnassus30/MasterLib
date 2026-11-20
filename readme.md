@@ -192,9 +192,66 @@
         - déclenche les actions associées
         - l’IHM système affiche l’état
 
-7) Utiliser MasterLib (HOW TO)
+7) Réseau et blockchain — axe de développement
 
-    7.1) Créer une application métier
+    7.1) Objectif
+
+        MasterLib est conçu pour permettre à des applications de communiquer et de
+        fonctionner en réseau.
+
+        À terme, MasterLib pourra fournir une capacité réseau et un registre distribué
+        réutilisables, éventuellement sous la forme d’un module ou service optionnel.
+        Une application pourra choisir de l’utiliser sans que toutes les applications
+        MasterLib soient obligées de rejoindre une blockchain.
+
+    7.2) Répartition des responsabilités
+
+        MasterLib fournira les mécanismes communs nécessaires au fonctionnement distribué,
+        selon une architecture qui reste à définir :
+        - communication entre instances ;
+        - identité des nœuds et vérification des messages ;
+        - stockage et synchronisation d’un registre partagé ;
+        - validation des données et des opérations.
+
+        Chaque application définira les informations et les règles propres à son usage :
+        - types de données ou d’opérations échangées ;
+        - droits accordés aux nœuds ;
+        - conditions d’adhésion au réseau ;
+        - rôle éventuel d’une instance maîtresse et des instances rattachées.
+
+        ReineRouge pourra être la première application à utiliser cette capacité pour
+        superviser ses instances et coordonner leurs échanges. Ses règles de gouvernance
+        et ses données métier resteront propres à ReineRouge.
+
+    7.3) Sécurité
+
+        Les opérations sensibles devront être authentifiées et vérifiables. Les clés
+        privées resteront protégées sur les machines qui les détiennent et ne seront
+        jamais publiées dans le dépôt ni intégrées au code source.
+
+        Les règles de confiance, la gestion des clés et les mécanismes de validation
+        devront être définis avant toute mise en service d’un réseau réel.
+
+    7.4) État et étapes
+
+        La blockchain et la communication entre instances ne sont pas encore implémentées.
+        Le KernelBus actuel fonctionne dans le processus local et ne constitue pas encore
+        un transport réseau.
+
+        Les étapes de développement envisagées sont :
+        1. stabiliser le fonctionnement local du noyau, du registre et du bus ;
+        2. définir les contrats de communication entre instances ;
+        3. mettre en place une communication réseau sécurisée ;
+        4. définir le registre distribué, sa validation et sa synchronisation ;
+        5. intégrer ces capacités dans une première application, ReineRouge.
+
+        Le mécanisme de consensus, la découverte des nœuds et la procédure de création
+        ou de rejoint d’un réseau restent à concevoir.
+
+
+10) Utiliser MasterLib (HOW TO)
+
+    10.1) Créer une application métier
 
         Structure recommandée (classique Python src/) :
 
@@ -208,7 +265,7 @@
                 └── cli.py
 
 
-    7.2) CLI minimal (obligatoire)
+    10.2) CLI minimal (obligatoire)
 
         Chaque application métier doit exposer un CLI minimal.
         Ce CLI **ne contient aucune logique métier** : il délègue entièrement le démarrage à MasterLib.
@@ -251,7 +308,7 @@
         > Toute déviation doit être justifiée explicitement.
 
 
-    7.3) pyproject.toml minimal
+    10.3) pyproject.toml minimal
 
         [build-system]
         requires = ["setuptools>=68", "wheel"]
@@ -269,14 +326,14 @@
         reinerouge = "reinerouge.cli:main"
 
 
-    7.4) Lancer l’application
+    10.4) Lancer l’application
 
         pip install -e .
         reinerouge
 
 
 
-8) Sécurité dev (important)
+11) Sécurité dev (important)
 
     Jamais de git pull/reset sur un repo MasterLib local
     Le code non committé est sacré
