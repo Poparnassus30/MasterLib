@@ -178,8 +178,7 @@ class Kernel:
     def run(self):
         self.running = True
         #controle de l'environnement graphique, l'interception du clavier fonctionne que sous x11
-        self.system.verifier_environnement_graphique()
-            
+        #self.system.verifier_environnement_graphique() #Fonctionner pour l'ecoute clavier, a été supprimé            
         try:
             self.logger.info("✅ Noyau ===> running, démmarrage de la boucle.")
 
@@ -219,7 +218,9 @@ class Kernel:
                         self.logger.error(f"❌ Impossible de relancer watch_config : {e}")
                 ###########################################################################
 
+                """
                 # ------------------------------------------------------------------------
+                N'EST PLUS UTILISER DANS LE PROGRAMME, FONCTION SUPPRIMER
                 # --CLAVIER
                 if (not self.stopping) and self.system.en_cours_clavier:
                     if not self.system.thread_manager.is_alive("lancer_ecoute_clavier"):
@@ -230,6 +231,8 @@ class Kernel:
                         except Exception as e  :
                             self.logger.error(f"❌ Impossible de relancer lancer_ecoute_clavier : {e}")
                 ###########################################################################
+                """
+                
                 """
                 # ------------------------------------------------------------------------
                 # -- MODULE SCANNER (scan le dossier "modules")               
