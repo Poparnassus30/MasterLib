@@ -316,7 +316,7 @@ class ManagerConfig:
                 push_config_status_to_registre(f"Erreur de mise à jour : {e}", state="CRASHED", error=str(e))
                 self.logger.error(f"❌ Erreur lors du rechargement de la config : {e}")
 
-        time.sleep(5)
+            time.sleep(5)
 
 
 
