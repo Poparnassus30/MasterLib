@@ -78,18 +78,101 @@
     Aucun service n’importe directement le kernel.
     Tout passe par le bus.
 
-5) IHM système :
 
-    masterkernel possède sa propre IHM console
-    Elle affiche :
-        - l’état des services
-        - les changements d’état
-        - les événements du registre
-    C’est un gestionnaire système, pas une IHM métier
+5) IHM — interface de supervision
 
-    Les IHM graphiques métier sont externes au kernel.
+    5.1) Rôle de l’IHM
 
+        MasterLib fournit une IHM système commune aux applications qui utilisent la
+        bibliothèque.
 
+        Elle permet de superviser une instance locale : son noyau, son registre, ses
+        services et ses modules. Elle ne contient pas directement les fonctions propres
+        à chaque application métier.
+
+        L’IHM affiche l’état du système. Lorsqu’une action est disponible, elle transmet
+        la demande au MasterKernel via le KernelBus. Elle ne pilote pas directement les
+        services et les modules.
+
+    5.2) IHM console — outil de transition et de diagnostic
+
+        L’IHM console Rich reste disponible pendant le développement pour faciliter
+        l’observation du noyau.
+
+        Elle est en lecture seule :
+        - elle affiche les informations disponibles ;
+        - elle ne capte pas le clavier ;
+        - elle ne commande pas les services ou les modules.
+
+        Elle n’est pas l’interface normale d’exploitation d’une instance en arrière-plan.
+        Elle pourra être désactivée lorsque l’IHM Web remplira correctement son rôle.
+
+    5.3) IHM Web locale — interface de supervision cible
+
+        L’IHM principale est une interface Web accessible localement, par défaut sur
+        `127.0.0.1`, avec une adresse et un port définis par la configuration de
+        l’application.
+
+        Elle présente les informations fournies par le registre, les services de
+        supervision et les extensions déclarées par l’application. Elle peut utiliser
+        WebSocket pour recevoir les mises à jour en direct ; WebSocket est un moyen de
+        communication de l’interface, pas l’IHM elle-même.
+
+        L’interface ne doit pas afficher de secrets ni exposer de fonction d’administration
+        au-delà des permissions prévues.
+
+    5.4) Vues communes fournies par MasterLib
+
+        L’IHM système de MasterLib comprend les vues génériques suivantes :
+
+        - **Vue d’ensemble**
+        - identité de l’application et UUID de l’instance ;
+        - état du MasterKernel ;
+        - état général des services et modules connus ;
+        - alertes et événements récents.
+
+        - **Registre**
+        - consultation des entrées du registre local ;
+        - type, nom, identifiant ou PID, état, parent, relations et date de mise à jour.
+
+        - **Modules**
+        - liste des modules déclarés ou disponibles dans le catalogue configuré ;
+        - état installé, activé ou arrêté, lorsqu’il est connu ;
+        - demande d’activation ou de désactivation selon la configuration et les
+            permissions disponibles.
+
+        - **Journaux et ressources**
+        - consultation des événements et journaux accessibles ;
+        - affichage des ressources et processus suivis par le système.
+
+        Les actions proposées par l’IHM sont transmises au MasterKernel par le KernelBus.
+        Le noyau valide la demande et pilote ensuite le service ou le module concerné.
+
+    5.5) Extensions propres aux applications métier
+
+        Une application peut ajouter ses propres vues à l’IHM, sans modifier le cœur
+        générique de MasterLib.
+
+        Par exemple, ReineRouge pourra fournir des vues dédiées à son réseau d’instances,
+        à leurs rôles et à sa blockchain. Ces éléments ne font pas partie de l’IHM
+        commune de MasterLib.
+
+        Une vue métier utilise les interfaces fournies par MasterLib pour consulter les
+        informations ou transmettre des commandes. Elle ne contourne pas le KernelBus
+        pour piloter directement le noyau.
+
+        5.6) État de l’implémentation
+
+        L’IHM Web décrite ci-dessus est la cible fonctionnelle ; elle n’est pas encore
+        implémentée.
+
+        L’IHM Rich actuelle est un prototype. Elle affiche une partie du registre local,
+        mais tente aussi d’interroger un socket qui n’est pas opérationnel dans la
+        configuration actuelle. L’écoute clavier est séparée de l’affichage et doit être
+        désactivée pour le fonctionnement normal en arrière-plan.
+
+        Les vues de modules, de journaux, de ressources et les extensions métier restent
+        à réaliser ou à raccorder aux données réellement disponibles.
 
 6) Activation des services :
 
