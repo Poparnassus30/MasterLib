@@ -1,4 +1,4 @@
-1) Objectif :
+### 1) Objectif :
 
 MasterLib est un dépôt global fournissant un châssis logiciel unifié pour les applications Poparnassus.
 
@@ -13,7 +13,7 @@ L’objectif n’est pas de créer une “grosse app monolithique”, mais un sy
 - chaque application peut être autonome, tout en pouvant être pilotée, observée et étendue par un MasterKernel.
 
 
-2) Philosophie (important à lire) :
+### 2) Philosophie (important à lire) :
 
 Pas de cascade d’exécution :
 - Les modules ne s’appellent pas les uns les autres de manière incontrôlée.
@@ -34,7 +34,7 @@ chacun a son rôle, ses responsabilités, et ses frontières.
 
 
 
-3) Cartographie du dépôt :
+### 3) Cartographie du dépôt :
 
     MasterLib/
     └── src/
@@ -57,7 +57,7 @@ chacun a son rôle, ses responsabilités, et ses frontières.
         └── masterchaine/    # (en cours / réservé)
 
 
-4) Communication : le cœur du système
+### 4) Communication : le cœur du système
 
 La seule interface officielle entre :
 - le masterkernel
@@ -79,9 +79,9 @@ Aucun service n’importe directement le kernel.
 Tout passe par le bus.
 
 
-5) IHM — interface de supervision
+### 5) IHM — interface de supervision
 
-5.1) Rôle de l’IHM
+### 5.1) Rôle de l’IHM
 
 MasterLib fournit une IHM système commune aux applications qui utilisent la
 bibliothèque.
@@ -95,7 +95,7 @@ la demande au MasterKernel via le KernelBus. Elle ne pilote pas directement les
 services et les modules.
 
 
-5.2) IHM console — outil de transition et de diagnostic
+### 5.2) IHM console — outil de transition et de diagnostic
 
 L’IHM console Rich reste disponible pendant le développement pour faciliter
 l’observation du noyau.
@@ -109,7 +109,7 @@ Elle n’est pas l’interface normale d’exploitation d’une instance en arri
 Elle pourra être désactivée lorsque l’IHM Web remplira correctement son rôle.
 
 
-5.3) IHM Web locale — interface de supervision cible
+### 5.3) IHM Web locale — interface de supervision cible
 
 L’IHM principale est une interface Web accessible localement, par défaut sur
 `127.0.0.1`, avec une adresse et un port définis par la configuration de
@@ -124,7 +124,7 @@ L’interface ne doit pas afficher de secrets ni exposer de fonction d’adminis
 au-delà des permissions prévues.
 
 
-5.4) Vues communes fournies par MasterLib
+### 5.4) Vues communes fournies par MasterLib
 
 L’IHM système de MasterLib comprend les vues génériques suivantes :
 
@@ -152,7 +152,7 @@ Les actions proposées par l’IHM sont transmises au MasterKernel par le Kernel
 Le noyau valide la demande et pilote ensuite le service ou le module concerné.
 
 
-5.5) Extensions propres aux applications métier
+### 5.5) Extensions propres aux applications métier
 
 Une application peut ajouter ses propres vues à l’IHM, sans modifier le cœur
 générique de MasterLib.
@@ -165,7 +165,7 @@ Une vue métier utilise les interfaces fournies par MasterLib pour consulter les
 informations ou transmettre des commandes. Elle ne contourne pas le KernelBus
 pour piloter directement le noyau.
 
-5.6) État de l’implémentation
+### 5.6) État de l’implémentation
 
 L’IHM Web décrite ci-dessus est la cible fonctionnelle ; elle n’est pas encore
 implémentée.
@@ -175,7 +175,7 @@ L’IHM Rich actuelle est un prototype. Elle affiche une partie du registre loca
 Les vues de modules, de journaux, de ressources et les extensions métier restent
 à réaliser ou à raccorder aux données réellement disponibles.
 
-6) Activation des services :
+### 6) Activation des services :
 
 Les services sont pilotés par configuration, pas par code.
 Exemple : conf_service.ini
@@ -193,9 +193,9 @@ Fonctionnement :
 - déclenche les actions associées
 - l’IHM système affiche l’état
 
-7) Réseau et blockchain — axe de développement
+### 7) Réseau et blockchain — axe de développement
 
-7.1) Objectif
+### 7.1) Objectif
 
 MasterLib est conçu pour permettre à des applications de communiquer et de
 fonctionner en réseau.
@@ -205,7 +205,7 @@ réutilisables, éventuellement sous la forme d’un module ou service optionnel
 Une application pourra choisir de l’utiliser sans que toutes les applications
 MasterLib soient obligées de rejoindre une blockchain.
 
-7.2) Répartition des responsabilités
+### 7.2) Répartition des responsabilités
 
 MasterLib fournira les mécanismes communs nécessaires au fonctionnement distribué,
 selon une architecture qui reste à définir :
@@ -224,7 +224,7 @@ ReineRouge pourra être la première application à utiliser cette capacité pou
 superviser ses instances et coordonner leurs échanges. Ses règles de gouvernance
 et ses données métier resteront propres à ReineRouge.
 
-7.3) Sécurité
+### 7.3) Sécurité
 
 Les opérations sensibles devront être authentifiées et vérifiables. Les clés
 privées resteront protégées sur les machines qui les détiennent et ne seront
@@ -233,7 +233,7 @@ jamais publiées dans le dépôt ni intégrées au code source.
 Les règles de confiance, la gestion des clés et les mécanismes de validation
 devront être définis avant toute mise en service d’un réseau réel.
 
-7.4) État et étapes
+### 7.4) État et étapes
 
 La blockchain et la communication entre instances ne sont pas encore implémentées.
 Le KernelBus actuel fonctionne dans le processus local et ne constitue pas encore
@@ -250,8 +250,9 @@ Le mécanisme de consensus, la découverte des nœuds et la procédure de créat
 ou de rejoint d’un réseau restent à concevoir.
 
 
-8) Utiliser MasterLib (HOW TO)
-8.1) Commandes de l’instance
+### 8) Utiliser MasterLib (HOW TO)
+
+### 8.1) Commandes de l’instance
 
 La commande `master` est installée avec MasterLib. Elle sert à initialiser,
 démarrer, vérifier, superviser et arrêter une instance locale.
@@ -292,7 +293,7 @@ master monitor reinerouge --project-root "$HOME/github/reinerouge"
 master stop --project-root "$HOME/github/reinerouge"
 ```
 
-8.2) Créer une application métier
+### 8.2) Créer une application métier
 
 Structure recommandée (classique Python src/) :
 
@@ -306,7 +307,7 @@ reinerouge/
         └── cli.py
 
 
-8.3) CLI minimal (obligatoire)
+### 8.3) CLI minimal (obligatoire)
 
 Chaque application métier doit exposer un CLI minimal.
 Ce CLI **ne contient aucune logique métier** : il délègue entièrement le démarrage à MasterLib.
@@ -349,7 +350,7 @@ Dans un projet utilisant le layout classique `src/`, procéder ainsi :
 > Toute déviation doit être justifiée explicitement.
 
 
-8.4) pyproject.toml minimal
+### 8.4) pyproject.toml minimal
 
     [build-system]
     requires = ["setuptools>=68", "wheel"]
@@ -367,14 +368,14 @@ Dans un projet utilisant le layout classique `src/`, procéder ainsi :
     reinerouge = "reinerouge.cli:main"
 
 
-8.5) Lancer l’application
+### 8.5) Lancer l’application
 
     pip install -e .
     reinerouge
 
 
 
-9) Sécurité dev (important)
+### 9) Sécurité dev (important)
 
 Jamais de git pull/reset sur un repo MasterLib local
 Le code non committé est sacré
