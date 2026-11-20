@@ -125,19 +125,30 @@ class KernelBus:
 
     def register_transport(self, transport: Any) -> None:
         # transport = BaseTransport (duck typing)
+        if self._running:
+            raise RuntimeError("Les transports doivent être enregistrés avant le démarrage du bus")
         self._transports.append(transport)
 
     def start(self) -> None:
         if self._running:
             return
-        self._running = True
-        self.logger.info("🧠 KernelBus start")
-        for t in self._transports:
-            try:
+        started = []
+        try:
+            for t in self._transports:
                 t.start(self.handle)   # handler = bus.handle
-                self.logger.info(f"🔌 Transport démarré: {getattr(t,'name',t.__class__.__name__)}")
-            except Exception as e:
-                self.logger.exception(f"❌ Transport start failed: {t} -> {e}")
+                started.append(t)
+                self.logger.info("🔌 Transport démarré: %s", getattr(t, "name", t.__class__.__name__))
+        except Exception:
+            for transport in reversed(started):
+                try:
+                    transport.stop()
+                except Exception:
+                    self.logger.exception("Échec de l'arrêt du transport %s", transport)
+            self.logger.exception("❌ Démarrage du KernelBus impossible")
+            raise
+
+        self._running = True
+        self.logger.info("🧠 KernelBus démarré (%s transport(s))", len(started))
 
     def stop(self) -> None:
         self._running = False
@@ -145,7 +156,7 @@ class KernelBus:
             try:
                 t.stop()
             except Exception:
-                pass
+                self.logger.exception("Échec de l'arrêt du transport %s", t)
         self.logger.info("🛑 KernelBus stop")
 
     def publish(self, topic: str, data: Optional[dict] = None, source: str = "kernel") -> Dict[str, Any]:
@@ -162,6 +173,8 @@ class KernelBus:
     # --------- Core dispatch ----------
     def handle(self, msg: Dict[str, Any]) -> Dict[str, Any]:
         """Entrée unique pour TOUS les messages (thread/module/subprocess)."""
+        if not isinstance(msg, dict):
+            return {"ok": False, "error": "invalid_message:expected_object"}
         msg = self._normalize(msg)
         topic = msg["topic"]
 

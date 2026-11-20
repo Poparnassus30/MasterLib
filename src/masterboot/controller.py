@@ -17,11 +17,16 @@ Responsabilités (V0) :
 
 import os
 import sys
+import signal
 import time
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+import psutil
+
+from masterkernel.paths import build_paths
+from masterservice.transport.ipc.transport_ipc import TransportIpc
 
 
 @dataclass
@@ -117,24 +122,35 @@ def _run_prepare_workspace_sh(project_root: Path, paths: BootPaths) -> None:
         )
 
 
-def _start_kernel(project_root: Path, paths: BootPaths) -> subprocess.Popen:
+def _start_kernel(project_root: Path, project_name: str, paths: BootPaths) -> subprocess.Popen:
     cmd = [
         sys.executable,
         "-m",
         "masterkernel.runtime",
         "--project-root",
         str(project_root),
+        "--app-name",
+        project_name,
+        "--paths-mode",
+        "local",
     ]
     _log(paths, f"[BOOT] launch kernel: {' '.join(cmd)}")
-    # on écrit tout dans masterkernel.log
+    env = os.environ.copy()
+    env["MASTER_KERNEL_BACKGROUND"] = "1"
     kernel_log_f = paths.kernel_log.open("a", encoding="utf-8")
-    p = subprocess.Popen(
-        cmd,
-        cwd=str(project_root),
-        stdout=kernel_log_f,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
+    try:
+        p = subprocess.Popen(
+            cmd,
+            cwd=str(project_root),
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=kernel_log_f,
+            stderr=subprocess.STDOUT,
+            text=True,
+            start_new_session=(os.name != "nt"),
+        )
+    finally:
+        kernel_log_f.close()
     paths.pid_file.write_text(str(p.pid), encoding="utf-8")
     _log(paths, f"[BOOT] kernel pid={p.pid}")
     return p
@@ -199,11 +215,45 @@ class ProjectController:
         _ensure_workspace(self.paths)
         _log(self.paths, f"[BOOT] init project={self.project_name} root={self.project_root}")
 
+    def _runtime_paths(self):
+        return build_paths(self.project_name, app_root=str(self.project_root), mode="local")
+
+    def _pid_matches_kernel(self, pid: int) -> bool:
+        try:
+            process = psutil.Process(pid)
+            command = process.cmdline()
+        except (psutil.NoSuchProcess, psutil.ZombieProcess):
+            return False
+        except psutil.AccessDenied:
+            return True
+
+        command_text = " ".join(command)
+        return (
+            "masterkernel.runtime" in command_text
+            and str(self.project_root) in command_text
+        )
+
+    def _kernel_request(self, topic: str, data: dict | None = None) -> dict:
+        paths = self._runtime_paths()
+        return TransportIpc.request(
+            paths.master_endpoint,
+            {"topic": topic, "source": "masterboot", "data": data or {}},
+            timeout=1.0,
+        )
+
     def start(self) -> int:
         if self.paths.pid_file.exists():
-            pid = self.paths.pid_file.read_text(encoding="utf-8").strip()
-            _log(self.paths, f"[BOOT] pid file already exists (pid={pid}) -> refuse to start (stop first)")
-            return 1
+            pid_s = self.paths.pid_file.read_text(encoding="utf-8").strip()
+            try:
+                pid = int(pid_s)
+            except ValueError:
+                self.paths.pid_file.unlink(missing_ok=True)
+            else:
+                if self._pid_matches_kernel(pid):
+                    _log(self.paths, f"[BOOT] kernel déjà actif (pid={pid})")
+                    return 1
+                _log(self.paths, f"[BOOT] suppression du PID périmé ({pid})")
+                self.paths.pid_file.unlink(missing_ok=True)
             
         self.init_project()
         _log(self.paths, f"[BOOT] === START ({self.project_name}) ===")
@@ -216,29 +266,56 @@ class ProjectController:
             return 1
 
         # start kernel
-        p = _start_kernel(self.project_root, self.paths)
+        p = _start_kernel(self.project_root, self.project_name, self.paths)
 
-        # check rapide : si ça meurt direct, on le voit tout de suite
-        time.sleep(1.0)
-        rc = p.poll()
-        if rc is not None:
-            _log(self.paths, f"[BOOT] ❌ kernel exited rc={rc} (see {self.paths.kernel_log})")
-            return 1
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline:
+            rc = p.poll()
+            if rc is not None:
+                self.paths.pid_file.unlink(missing_ok=True)
+                _log(self.paths, f"[BOOT] ❌ kernel exited rc={rc} (voir {self.paths.kernel_log})")
+                return 1
+            try:
+                response = self._kernel_request("kernel.status")
+                if response.get("ok") and response.get("running"):
+                    _log(self.paths, f"[BOOT] ✅ kernel prêt (pid={p.pid}, transport=IPC)")
+                    _log(self.paths, f"[BOOT] log={self.paths.kernel_log}")
+                    return 0
+            except (OSError, ValueError, TimeoutError):
+                time.sleep(0.2)
 
-        _log(self.paths, f"[BOOT] ✅ kernel running (log={self.paths.kernel_log})")
-        return 0
+        _log(self.paths, "[BOOT] ❌ le noyau n'a pas répondu au contrôle IPC en 10 s")
+        try:
+            p.terminate()
+            p.wait(timeout=3)
+        except Exception:
+            p.kill()
+        self.paths.pid_file.unlink(missing_ok=True)
+        return 1
 
     def status(self) -> str:
         if not self.paths.pid_file.exists():
             return "STOPPED (no pid)"
-        pid = self.paths.pid_file.read_text(encoding="utf-8").strip()
-        return f"PID={pid} (unknown liveness in V0)"
+        pid_s = self.paths.pid_file.read_text(encoding="utf-8").strip()
+        try:
+            pid = int(pid_s)
+        except ValueError:
+            self.paths.pid_file.unlink(missing_ok=True)
+            return "STOPPED (invalid pid file removed)"
+
+        if not self._pid_matches_kernel(pid):
+            self.paths.pid_file.unlink(missing_ok=True)
+            return f"STOPPED (stale pid {pid} removed)"
+
+        try:
+            response = self._kernel_request("kernel.status")
+            if response.get("ok"):
+                return f"RUNNING PID={pid} state={response.get('state', 'unknown')}"
+        except (OSError, ValueError, TimeoutError):
+            pass
+        return f"RUNNING PID={pid} (IPC not responding; inspect {self.paths.kernel_log})"
 
     def stop(self) -> int:
-        """
-        V0: on tente un terminate sur le PID si présent.
-        Plus tard: stop propre via kernel_bus.
-        """
         if not self.paths.pid_file.exists():
             _log(self.paths, "[BOOT] stop: no pid")
             return 0
@@ -249,12 +326,43 @@ class ProjectController:
         try:
             pid = int(pid_s)
         except ValueError:
-            _log(self.paths, "[BOOT] pid invalid")
-            return 1
+            self.paths.pid_file.unlink(missing_ok=True)
+            _log(self.paths, "[BOOT] pid invalide supprimé")
+            return 0
+
+        if not self._pid_matches_kernel(pid):
+            self.paths.pid_file.unlink(missing_ok=True)
+            _log(self.paths, f"[BOOT] PID périmé supprimé ({pid})")
+            return 0
 
         try:
-            os.kill(pid, 15)  # SIGTERM
-            return 0
-        except Exception as e:
-            _log(self.paths, f"[BOOT] stop error: {e}")
-            return 1
+            response = self._kernel_request("kernel.shutdown", {"reason": "masterboot_stop"})
+            if not response.get("ok"):
+                raise RuntimeError(response.get("error", "accusé IPC négatif"))
+            _log(self.paths, f"[BOOT] arrêt propre accepté par le noyau (pid={pid})")
+        except Exception as exc:
+            _log(self.paths, f"[BOOT] IPC indisponible, arrêt du processus en secours : {exc}")
+            try:
+                process = psutil.Process(pid)
+                process.terminate()
+            except psutil.NoSuchProcess:
+                self.paths.pid_file.unlink(missing_ok=True)
+                return 0
+            except Exception as e:
+                _log(self.paths, f"[BOOT] stop error: {e}")
+                return 1
+
+        try:
+            process = psutil.Process(pid)
+            process.wait(timeout=10)
+        except psutil.NoSuchProcess:
+            pass
+        except psutil.TimeoutExpired:
+            _log(self.paths, "[BOOT] délai dépassé, arrêt forcé du noyau")
+            try:
+                psutil.Process(pid).kill()
+            except psutil.NoSuchProcess:
+                pass
+        self.paths.pid_file.unlink(missing_ok=True)
+        _log(self.paths, "[BOOT] noyau arrêté")
+        return 0

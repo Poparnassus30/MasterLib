@@ -133,10 +133,12 @@ class System:
 
         formatter = logging.Formatter("[%(asctime)s] %(levelname)s - %(message)s")
 
-        # console
-        sh = logging.StreamHandler()
-        sh.setFormatter(formatter)
-        logger.addHandler(sh)
+        # En mode lancé par masterboot, stdout est redirigé vers le fichier log.
+        # Le FileHandler ci-dessous suffit et évite chaque ligne en double.
+        if os.getenv("MASTER_KERNEL_BACKGROUND") != "1":
+            sh = logging.StreamHandler()
+            sh.setFormatter(formatter)
+            logger.addHandler(sh)
 
         # fichier
         if self.paths:

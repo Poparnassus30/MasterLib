@@ -24,7 +24,7 @@ class Paths:
 
     registry_file: Path
     log_file: Path
-    master_socket: Path
+    master_endpoint: Path
 
     def module_socket(self, module_name: str) -> Path:
         safe = "".join(c if (c.isalnum() or c in "-_.") else "_" for c in module_name)
@@ -94,8 +94,8 @@ def build_paths(app_name: str, app_root: str | None = None, mode: str = "auto") 
     socket_dir = runtime_dir / "sockets"
 
     registry_file = registry_dir / "registry.json"
-    log_file = logs_dir / f"{app_name}.log"
-    master_socket = socket_dir / f"{app_name}.sock"
+    log_file = logs_dir / "masterkernel.log"
+    master_endpoint = socket_dir / f"{app_name}.endpoint.json"
 
     # mkdir (runtime_dir peut échouer si droits chelous -> on fallback /tmp)
     for p in (data_dir, config_dir, cache_dir, logs_dir, registry_dir):
@@ -108,7 +108,7 @@ def build_paths(app_name: str, app_root: str | None = None, mode: str = "auto") 
         socket_dir = runtime_dir / "sockets"
         socket_dir.mkdir(parents=True, exist_ok=True)
 
-        master_socket = socket_dir / f"{app_name}.sock"
+        master_endpoint = socket_dir / f"{app_name}.endpoint.json"
 
     return Paths(
         app_name=app_name,
@@ -123,5 +123,5 @@ def build_paths(app_name: str, app_root: str | None = None, mode: str = "auto") 
         socket_dir=socket_dir,
         registry_file=registry_file,
         log_file=log_file,
-        master_socket=master_socket,
+        master_endpoint=master_endpoint,
     )

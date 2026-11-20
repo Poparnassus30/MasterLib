@@ -135,6 +135,24 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Dossier racine du projet (par défaut: dossier courant).",
     )
 
+    # --- monitor ---
+    p_monitor = sub.add_parser(
+        "monitor",
+        help="Affiche le registre local dans l'IHM Rich (lecture seule).",
+    )
+    p_monitor.add_argument("project_name", nargs="?", default=None)
+    p_monitor.add_argument(
+        "--project-root",
+        dest="project_root",
+        default=None,
+        help="Dossier racine du projet (par défaut: dossier courant).",
+    )
+    p_monitor.add_argument(
+        "--once",
+        action="store_true",
+        help="Affiche un seul snapshot puis quitte.",
+    )
+
     # --- init (optionnel mais pratique) ---
     p_init = sub.add_parser(
         "init",
@@ -250,6 +268,18 @@ def _cmd_stop(args: argparse.Namespace) -> int:
     return ctl.stop()
 
 
+def _cmd_monitor(args: argparse.Namespace) -> int:
+    project_root = _resolve_project_root(args.project_root)
+    project_name = args.project_name or project_root.name
+
+    from masterkernel.kernel.kernel_ihm import KernelIhm
+    from masterkernel.paths import build_paths
+
+    paths = build_paths(project_name, app_root=str(project_root), mode="local")
+    KernelIhm(paths.master_endpoint, app_name=project_name).run(once=args.once)
+    return 0
+
+
 def _cmd_init(args: argparse.Namespace) -> int:
     project_root = _resolve_project_root(args.project_root)
     project_name = args.project_name or project_root.name
@@ -274,6 +304,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_status(ns)
     if ns.command == "stop":
         return _cmd_stop(ns)
+    if ns.command == "monitor":
+        return _cmd_monitor(ns)
     if ns.command == "init":
         return _cmd_init(ns)
 

@@ -272,7 +272,7 @@ class ManagerConfig:
         if self.logger:
             self.logger.info("🔁 Fichier de configuration rechargé.")
 
-    def controle_maj_configuration(self, noyau_ref):
+    def controle_maj_configuration(self, noyau_ref, stop_event=None):
         def push_config_status_to_registre(status: str, state: str = None, error: str = None):
             """Miroir snapshot dans le registre pour Rich (évite de dépendre de variables volatiles)."""
             try:
@@ -296,7 +296,7 @@ class ManagerConfig:
                 # pas de crash du watcher si le registre n'est pas prêt
                 pass
 
-        while True:
+        while stop_event is None or not stop_event.is_set():
             try:
                 if self.config_modifiee_depuis_derniere_lecture():
                     noyau_ref.status_update_config = "Changement de config en cours"
@@ -316,7 +316,10 @@ class ManagerConfig:
                 push_config_status_to_registre(f"Erreur de mise à jour : {e}", state="CRASHED", error=str(e))
                 self.logger.error(f"❌ Erreur lors du rechargement de la config : {e}")
 
-            time.sleep(5)
+            if stop_event is None:
+                time.sleep(5)
+            elif stop_event.wait(5):
+                break
 
 
 
