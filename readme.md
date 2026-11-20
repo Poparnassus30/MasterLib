@@ -81,6 +81,112 @@ Tout passe par le bus.
 
 ### 5) IHM — interface de supervision
 
+#### 5.0) Architecture commune des interfaces
+
+##### Objectif
+
+MasterLib doit pouvoir exposer l’état de son noyau à plusieurs interfaces indépendantes :
+
+- une interface console utilisant Rich ;
+- une interface web accessible depuis un navigateur ;
+- à terme, des vues permettant de superviser les modules chargés par l’application.
+
+Le noyau doit fonctionner même si aucune interface n’est lancée. Les interfaces sont des clientes de supervision : leur arrêt ne doit pas arrêter le noyau.
+
+##### Principe général
+
+Les interfaces ne collectent pas chacune les informations directement dans leurs propres objets et ne lisent pas les fichiers JSON du registre pour connaître l’état courant.
+
+Le noyau détient l’état opérationnel. Le registre local tenu par le noyau constitue la source de référence pour la supervision en temps réel. Les fichiers persistés servent à conserver ou diagnostiquer des données ; ils ne remplacent pas l’état vivant du noyau. Une éventuelle référence blockchain appartient à une étape ultérieure et n’est pas encore mise en place.
+
+Le service IHM rassemble les informations du noyau et du registre dans un snapshot structuré. Les interfaces demandent ce snapshot par le transport local et le présentent selon leur format.
+
+```text
+État du noyau et registre
+          │
+          ▼
+ServiceIhm — construit le snapshot commun
+          │
+          ▼
+KernelBus et transport IPC local
+          │
+          ├── Client IHM → affichage console Rich
+          │
+          └── Client IHM → serveur web → navigateur
+```
+
+##### Responsabilités des composants
+
+| Composant | Responsabilité |
+|---|---|
+| `ServiceIhm` | Rassembler l’état du noyau et du registre, construire le snapshot commun et répondre à la requête de supervision. Il ne dépend d’aucune bibliothèque d’affichage. |
+| `ClientIhm` | Envoyer la requête de snapshot au noyau via le transport IPC local et fournir une réponse commune aux interfaces. |
+| IHM console | Mettre en forme le snapshot avec Rich et l’actualiser périodiquement. Elle ne possède pas sa propre copie de la logique de collecte. |
+| IHM web | Servir l’interface web. Son serveur reçoit les demandes du navigateur et utilise le client commun pour obtenir l’état du noyau. Le navigateur ne se connecte pas directement au transport IPC. |
+| Noyau | Maintenir l’état opérationnel, le registre, le bus et le transport local. Son démarrage ne dépend pas des interfaces. |
+
+##### Requête de supervision
+
+Le service doit exposer une requête unique, par exemple `ihm.snapshot`, via le KernelBus et le transport local.
+
+Cette requête doit renvoyer un snapshot cohérent contenant au minimum :
+
+- l’état du noyau ;
+- son PID et son heure de démarrage ;
+- les entrées du registre ;
+- pour chaque entrée : son type, son nom, son identifiant éventuel, son état courant, son état souhaité, ses relations et sa dernière erreur.
+
+Une requête unique évite que chaque interface assemble séparément plusieurs réponses et puisse afficher des informations prises à des instants différents.
+
+Le snapshot décrit l’état de supervision de MasterLib. Les données propres au métier de ReineRouge et de ses futurs modules seront ajoutées par des mécanismes d’extension définis ultérieurement ; elles ne doivent pas transformer le registre de supervision en registre métier.
+
+##### Chemins des fichiers prévus
+
+| Chemin | Rôle prévu | État |
+|---|---|---|
+| `src/masterservice/service/ihm/__init__.py` | Déclarer le paquet du service IHM. | À créer si nécessaire |
+| `src/masterservice/service/ihm/service_ihm.py` | Construire et fournir le snapshot commun depuis l’état du noyau et le registre. | À développer |
+| `src/masterservice/service/ihm/client_ihm.py` | Centraliser les requêtes IPC utilisées par les interfaces. | À développer |
+| `src/masterkernel/kernel/kernel_ihm.py` | Afficher le snapshot dans la console avec Rich. | Existe ; à adapter pour utiliser le client commun |
+| `src/masterkernel/kernel/kernel_ihm_web.py` | Fournir l’interface et les routes du serveur web de supervision. | Fichier à compléter ou à créer |
+
+Le nom des fichiers ou leur emplacement pourra être ajusté pendant l’implémentation, mais la séparation des responsabilités doit rester la même.
+
+##### Fonctionnement des processus et des rafraîchissements
+
+Le noyau est lancé par `master start` dans son propre processus. Il reste actif sans terminal Rich et sans serveur web.
+
+La commande `master monitor` lance le moniteur Rich au premier plan dans le terminal où elle est exécutée. Le moniteur interroge périodiquement le noyau par IPC ; il ne démarre pas un thread dans le noyau et ne constitue pas une tâche de fond détachée.
+
+- `Ctrl+C` ferme le moniteur Rich sans arrêter le noyau.
+- `master stop` demande l’arrêt du noyau.
+- `master monitor ... --once` demande un snapshot, l’affiche une fois et quitte.
+- Le serveur web sera lui aussi un processus optionnel. Sa commande de lancement et son cycle d’arrêt seront documentés lorsqu’ils seront définis.
+
+Dans la première version, le service répond aux requêtes reçues par le bus. Il n’a pas besoin d’un thread de rafraîchissement qui lui soit propre : ce sont les clients qui demandent un snapshot lorsqu’ils doivent actualiser leur affichage.
+
+##### Séparation entre supervision système et interface métier
+
+L’interface web de MasterLib constitue la supervision du système : état du noyau, registre, transport, services et modules chargés.
+
+ReineRouge pourra fournir ses propres pages métier, accessibles depuis le menu de l’interface web. Ces pages pourront afficher et manipuler les fonctions métier de ReineRouge, notamment ses futurs cortex IA et son réseau neuronal.
+
+La page métier ne doit pas être confondue avec le rendu Rich, ni imposer le démarrage de la console. Les règles d’intégration des pages et des vues de modules seront définies lorsque le socle de supervision web fonctionnera.
+
+##### Feuille de route
+
+1. Définir et documenter le format du snapshot de supervision.
+2. Créer `ServiceIhm` et l’enregistrer auprès du noyau et du KernelBus.
+3. Ajouter le client IPC commun utilisé par les interfaces.
+4. Adapter l’IHM Rich pour afficher le snapshot fourni par ce client.
+5. Vérifier que le noyau démarre, s’arrête et reste supervisable indépendamment de Rich.
+6. Construire le serveur web comme un client indépendant du même snapshot.
+7. Ajouter ensuite le menu et les points d’extension pour les pages métier et les vues des modules.
+
+##### État actuel
+
+L’IHM Rich existe et peut afficher l’état du noyau et du registre à travers le transport local. La collecte commune par `ServiceIhm`, la requête unique de snapshot et le client IHM partagé restent à développer. L’IHM web complète, son mode de lancement et l’intégration des pages métier restent également à définir et à implémenter.
+
 ### 5.1) Rôle de l’IHM
 
 MasterLib fournit une IHM système commune aux applications qui utilisent la
