@@ -250,8 +250,48 @@
 
 
 10) Utiliser MasterLib (HOW TO)
+    10.1) Commandes de l’instance
 
-    10.1) Créer une application métier
+        La commande `master` est installée avec MasterLib. Elle sert à initialiser,
+        démarrer, vérifier, superviser et arrêter une instance locale.
+
+        Depuis la racine du projet, `--project-root` peut être omis : le répertoire
+        courant est utilisé par défaut. Dans les exemples ci-dessous, il est indiqué
+        explicitement pour éviter toute ambiguïté.
+
+        - `master init reinerouge --project-root "$HOME/github/reinerouge"`
+          Initialise le projet si nécessaire, notamment sa configuration et son dossier
+          `data/`.
+
+        - `master start reinerouge --project-root "$HOME/github/reinerouge"`
+          Prépare l’espace de travail puis démarre le MasterKernel en arrière-plan.
+          La commande confirme son démarrage lorsque le noyau est prêt et que le
+          transport local répond.
+
+        - `master status --project-root "$HOME/github/reinerouge"`
+          Affiche l’état du processus et du noyau.
+
+        - `master monitor reinerouge --project-root "$HOME/github/reinerouge"`
+          Ouvre l’IHM console Rich en lecture seule. Elle interroge le noyau et actualise
+          l’affichage. Elle peut être lancée dans un autre terminal. `Ctrl+C` ferme le
+          moniteur sans arrêter le noyau.
+
+        - `master monitor reinerouge --project-root "$HOME/github/reinerouge" --once`
+          Affiche un seul état puis quitte.
+
+        - `master stop --project-root "$HOME/github/reinerouge"`
+          Demande l’arrêt propre du noyau via le transport local.
+
+        Séquence habituelle :
+
+        ```bash
+        master start reinerouge --project-root "$HOME/github/reinerouge"
+        master status --project-root "$HOME/github/reinerouge"
+        master monitor reinerouge --project-root "$HOME/github/reinerouge"
+        master stop --project-root "$HOME/github/reinerouge"
+        ```
+
+    10.2) Créer une application métier
 
         Structure recommandée (classique Python src/) :
 
@@ -265,7 +305,7 @@
                 └── cli.py
 
 
-    10.2) CLI minimal (obligatoire)
+    10.3) CLI minimal (obligatoire)
 
         Chaque application métier doit exposer un CLI minimal.
         Ce CLI **ne contient aucune logique métier** : il délègue entièrement le démarrage à MasterLib.
@@ -308,7 +348,7 @@
         > Toute déviation doit être justifiée explicitement.
 
 
-    10.3) pyproject.toml minimal
+    10.4) pyproject.toml minimal
 
         [build-system]
         requires = ["setuptools>=68", "wheel"]
@@ -326,7 +366,7 @@
         reinerouge = "reinerouge.cli:main"
 
 
-    10.4) Lancer l’application
+    10.5) Lancer l’application
 
         pip install -e .
         reinerouge
