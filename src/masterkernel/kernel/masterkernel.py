@@ -164,7 +164,7 @@ class Kernel:
         #Socket du noyau pour les processus enfants de MAsterApp
         self.socket_interface = None
         try:
-            from MasterLib.src.masterservice.transport.ipc.transport_ipc import TransportIpc
+            from masterservice.transport.ipc.transport_ipc import TransportIpc
             self.socket_interface = TransportIpc(self)
         except ImportError as e:
             self.logger.error(f"❌ Impossible d’importer TransportIpc : {e}")
@@ -194,7 +194,7 @@ class Kernel:
                     except Exception as e  :
                         self.logger.error(f"❌ Impossible de relancer noyau_manager : {e}")
                 ###########################################################################
-                """
+                
                 # ------------------------------------------------------------------------
                 # -- SOCKET UNIX
                 if not self.system.thread_manager.is_alive("noyau_socket"):
@@ -205,7 +205,7 @@ class Kernel:
                     except Exception as e   :
                         self.logger.error(f"❌ Impossible de relancer noyau_socket : {e}")
                 ###########################################################################
-                """
+                
                 
                 # ------------------------------------------------------------------------
                 # --WATCH CONFIG config.ini
