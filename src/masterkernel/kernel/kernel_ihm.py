@@ -15,6 +15,12 @@ from rich.table import Table
 from masterservice.transport.ipc.transport_ipc import TransportIpc
 
 
+class _ServiceIhmError(Exception):
+    def __init__(self, error: dict) -> None:
+        self.error = error
+        super().__init__(error.get("message", "Erreur ServiceIhm"))
+
+
 class KernelIhm:
     """Affiche un snapshot du registre; ne lit pas le clavier et n'envoie pas d'action."""
 
@@ -23,24 +29,30 @@ class KernelIhm:
         self.app_name = app_name
         self.console = Console()
 
-    def _snapshot(self) -> tuple[dict, dict]:
-        status = TransportIpc.request(
+    def _snapshot(self) -> dict:
+        response = TransportIpc.request(
             self.endpoint_file,
-            {"topic": "kernel.status", "source": "kernel_ihm", "data": {}},
+            {"topic": "ihm.snapshot", "source": "kernel_ihm", "data": {}},
         )
-        registry = TransportIpc.request(
-            self.endpoint_file,
-            {"topic": "registry.snapshot", "source": "kernel_ihm", "data": {}},
-        )
-        if not status.get("ok"):
-            raise RuntimeError(status.get("error", "Statut du noyau indisponible"))
-        if not registry.get("ok"):
-            raise RuntimeError(registry.get("error", "Snapshot du registre indisponible"))
-        return status, registry.get("entries", {})
+        if not response.get("ok"):
+            error = response.get("error")
+            if isinstance(error, dict):
+                raise _ServiceIhmError(error)
+            raise RuntimeError(str(error or "Snapshot de supervision indisponible"))
+        return response.get("snapshot", {})
 
     def generer_affichage(self):
         try:
-            status, entries = self._snapshot()
+            snapshot = self._snapshot()
+        except _ServiceIhmError as exc:
+            error = exc.error
+            return Panel(
+                f"[bold]{error.get('code', 'MLIB.KERNEL.IHM.SNAPSHOT_UNAVAILABLE')}[/bold]\n"
+                f"{error.get('message', 'Snapshot de supervision indisponible.')}\n"
+                f"Identifiant : {error.get('error_id', '—')}",
+                title=f"{self.app_name} — supervision Rich",
+                border_style="red",
+            )
         except Exception as exc:
             return Panel(
                 f"Transport local indisponible : {exc}\n\nVérifie que le noyau est démarré.",
@@ -48,12 +60,15 @@ class KernelIhm:
                 border_style="red",
             )
 
+        status = snapshot.get("kernel", {})
+        transport = snapshot.get("transport", {})
+        entries = snapshot.get("registry", {}).get("entries", {})
         header = Panel(
             f"État : [bold green]{status.get('state', 'inconnu')}[/bold green]   "
             f"PID : {status.get('pid', '—')}   "
             f"Démarré : {status.get('started_at') or '—'}\n"
-            f"Transport local : {self.endpoint_file}",
-            title=f"{self.app_name} — MasterKernel",
+            f"Transport : {transport.get('name', '—')} — {transport.get('endpoint', self.endpoint_file)}",
+            title=f"{snapshot.get('app', self.app_name)} — MasterKernel",
             border_style="cyan",
         )
 

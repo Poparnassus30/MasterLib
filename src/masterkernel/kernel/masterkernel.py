@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from masterkernel.kernel.kernel_bus import KernelBus
 from masterkernel.system.system_registre import DesiredState, EntryState, RegistreEntry
 from masterservice.transport.ipc.transport_ipc import TransportIpc
+from masterservice.service.ihm import ServiceIhm
 
 
 class Kernel:
@@ -63,6 +64,13 @@ class Kernel:
         self.transport_entry.set_state(EntryState.STARTING)
         self.system.registre.ajouter(self.transport_entry)
 
+        self.ihm_service = ServiceIhm(
+            self.system,
+            kernel_status_provider=self._handle_status,
+            transport_provider=self._handle_transport_status,
+        )
+        self.ihm_service.register(self.bus)
+
         self.logger.info("Démarrage du KernelBus et du transport local.")
         try:
             self.bus.start()
@@ -86,6 +94,14 @@ class Kernel:
 
     def _handle_registry_snapshot(self, _message: dict) -> dict:
         return {"entries": self.system.registre.to_dict()}
+
+    def _handle_transport_status(self) -> dict:
+        return {
+            "name": self.transport.name,
+            "endpoint": str(self.paths.master_endpoint),
+            "protocol": "json-lines",
+            "state": self.transport_entry.state,
+        }
 
     def _handle_shutdown(self, message: dict) -> dict:
         data = message.get("data") or {}

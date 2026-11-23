@@ -42,6 +42,8 @@ class System:
         
         #2. initialise le logger
         self.logger = self.setup_logger()
+        from masterservice.errors import ErrorManager
+        self.errors = ErrorManager(self.logger, component="masterkernel.system")
         self.logger.info(f"🔧 Noyau - base_path :  {self.base_path}")
         self.logger.info(f"📂 base_path (pré-config) : {self.base_path}")
         
