@@ -66,7 +66,7 @@ class Kernel:
 
         self.ihm_service = ServiceIhm(
             self.system,
-            kernel_status_provider=self._handle_status,
+            kernel_status_provider=lambda: self._handle_status({}),
             transport_provider=self._handle_transport_status,
         )
         self.ihm_service.register(self.bus)
