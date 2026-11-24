@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime
 from enum import Enum
 import json
+import threading
 
 class DesiredState(str, Enum):
     RUNNING = "RUNNING"
@@ -290,6 +291,7 @@ class ManagerRegistre:
 
         self._registre: Dict[str, RegistreEntry] = {}
         self._grouped_cache: dict[str, list[tuple]] = {}
+        self._lock = threading.RLock()
         """
         try:
             entry.uuid_noeud = self.system.uuid_noeud
@@ -312,30 +314,30 @@ class ManagerRegistre:
         return entry
 
     def ajouter(self, entry: RegistreEntry):
-        if self.system:
-            entry.uuid_noeud = self.system.uuid_noeud
-
-        self._registre[entry.id] = entry
-        self.lier_automatiquement(entry)  # auto-relation intelligente
+        with self._lock:
+            if self.system:
+                entry.uuid_noeud = self.system.uuid_noeud
+            self._registre[entry.id] = entry
+            self.lier_automatiquement(entry)  # auto-relation intelligente
         
     def supprimer(self, identifiant: str):
-        if identifiant in self._registre:
-            self._registre.pop(identifiant)
-            self.system.logger.debug(f"[🗑️] Entrée supprimée par ID : {identifiant}")
-            return
+        with self._lock:
+            if identifiant in self._registre:
+                self._registre.pop(identifiant)
+                self.system.logger.debug(f"[🗑️] Entrée supprimée par ID : {identifiant}")
+                return
 
-        ids_a_supprimer = [
-            id_ for id_, entry in self._registre.items()
-            if entry.nom == identifiant
-        ]
-        for id_ in ids_a_supprimer:
-            self._registre.pop(id_)
-            self.system.logger.debug(f"[🗑️] Entrée supprimée par nom : {identifiant} (ID {id_})")
-        
-        # Supprimer aussi les relations vers cette entrée
-        for id_, entry in self._registre.items():
-            if identifiant in entry.relations:
-                entry.relations.remove(identifiant)
+            ids_a_supprimer = [
+                id_ for id_, entry in self._registre.items()
+                if entry.nom == identifiant
+            ]
+            for id_ in ids_a_supprimer:
+                self._registre.pop(id_)
+                self.system.logger.debug(f"[🗑️] Entrée supprimée par nom : {identifiant} (ID {id_})")
+
+            for entry in self._registre.values():
+                if identifiant in entry.relations:
+                    entry.relations.remove(identifiant)
 
     def modifier(self, id: str, **nouvelles_valeurs) -> bool:
         """
@@ -363,13 +365,16 @@ class ManagerRegistre:
     #############################################################
     # Accesseur 
     def get_by_id(self, id_: str) -> Optional[RegistreEntry]:
-        return self._registre.get(id_)
+        with self._lock:
+            return self._registre.get(id_)
 
     def get_by_name(self, nom: str) -> List[RegistreEntry]:
-        return [entry for entry in self._registre.values() if entry.nom == nom]
+        with self._lock:
+            return [entry for entry in self._registre.values() if entry.nom == nom]
 
     def get_by_type(self, type_objet: str) -> List[RegistreEntry]:
-        return [entry for entry in self._registre.values() if entry.type == type_objet]
+        with self._lock:
+            return [entry for entry in self._registre.values() if entry.type == type_objet]
 
     def get_modifies_depuis(self, since: datetime):
         return [r for r in self._registre.values() if r.timestamp > since]
@@ -453,7 +458,22 @@ class ManagerRegistre:
 
 
     def tous(self) -> List[RegistreEntry]:
-        return list(self._registre.values())
+        with self._lock:
+            return list(self._registre.values())
+
+    def creer_composant_runtime(
+        self, nom: str, type_objet: str, *, source: str = "system",
+        parent_id: str | None = None, meta: dict | None = None,
+    ) -> RegistreEntry:
+        """Enregistre avant démarrage un composant non-thread (service, serveur, transport…)."""
+        entry = RegistreEntry(nom, type_objet=type_objet, meta=meta or {})
+        entry.source = source
+        entry.set_desired(DesiredState.RUNNING)
+        entry.set_state(EntryState.STARTING)
+        if parent_id:
+            entry.ajouter_relation(parent_id)
+        self.ajouter(entry)
+        return entry
 
     def mettre_a_jour_meta(self, id_: str, cle: str, valeur):
         registre = self.get_by_id(id_)
@@ -465,7 +485,8 @@ class ManagerRegistre:
 
 
     def to_dict(self):
-        return {id_: reg.to_dict() for id_, reg in self._registre.items()}
+        with self._lock:
+            return {id_: reg.to_dict() for id_, reg in self._registre.items()}
 
     ##########################################################################
     # Mise en relations des différents dict {}
@@ -532,4 +553,3 @@ class ManagerRegistre:
                 self.system.logger.error(f"[❌] Échec de la sauvegarde JSON : {e}")
 
     ##########################################################################
-

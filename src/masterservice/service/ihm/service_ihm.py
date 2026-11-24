@@ -25,10 +25,12 @@ class ServiceIhm:
         system,
         kernel_status_provider: Callable[[], dict[str, Any]],
         transport_provider: Callable[[], dict[str, Any]],
+        runtime_refresh: Callable[[], None] | None = None,
     ) -> None:
         self.system = system
         self.kernel_status_provider = kernel_status_provider
         self.transport_provider = transport_provider
+        self.runtime_refresh = runtime_refresh
 
     def register(self, bus) -> None:
         """Enregistre le point d'entrée de supervision en lecture seule."""
@@ -38,6 +40,8 @@ class ServiceIhm:
         """Retourne l'état runtime, le transport et le registre dans une réponse."""
         correlation_id = message.get("id")
         try:
+            if self.runtime_refresh is not None:
+                self.runtime_refresh()
             snapshot = {
                 "schema_version": self.SNAPSHOT_SCHEMA_VERSION,
                 "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),

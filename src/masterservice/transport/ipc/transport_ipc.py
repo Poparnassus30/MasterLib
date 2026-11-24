@@ -23,9 +23,12 @@ class TransportIpc:
 
     name = "ipc.tcp_loopback"
 
-    def __init__(self, endpoint_file: str | Path, *, timeout: float = 2.0) -> None:
+    def __init__(self, endpoint_file: str | Path, *, thread_manager,
+                 parent_entry_id: str | None = None, timeout: float = 2.0) -> None:
         self.endpoint_file = Path(endpoint_file)
         self.timeout = timeout
+        self.thread_manager = thread_manager
+        self.parent_entry_id = parent_entry_id
         self.socket: socket.socket | None = None
         self.handler: BusHandler | None = None
         self._thread: threading.Thread | None = None
@@ -62,12 +65,17 @@ class TransportIpc:
 
         self.socket = server
         self._ready.set()
-        self._thread = threading.Thread(
-            target=self._serve,
-            name="masterkernel-ipc",
-            daemon=True,
-        )
-        self._thread.start()
+        try:
+            self._thread = self.thread_manager.run(
+                "transport.ipc", self._serve_managed,
+                owner_name="kernel", parent_entry_id=self.parent_entry_id,
+            )
+        except Exception:
+            self._ready.clear()
+            self.socket = None
+            server.close()
+            self.endpoint_file.unlink(missing_ok=True)
+            raise
 
     def _write_endpoint(self, host: str, port: int, token: str) -> None:
         payload = json.dumps({"host": host, "port": port, "token": token})
@@ -93,6 +101,15 @@ class TransportIpc:
             raise
         except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
             self.endpoint_file.unlink(missing_ok=True)
+
+    def _serve_managed(self) -> None:
+        try:
+            self._serve()
+        except Exception as exc:
+            parent = self.thread_manager.registre.get_by_id(self.parent_entry_id) if self.parent_entry_id else None
+            if parent is not None:
+                parent.set_state("CRASHED", error=str(exc))
+            raise
 
     def _serve(self) -> None:
         assert self.socket is not None
@@ -139,15 +156,15 @@ class TransportIpc:
             return
 
     def stop(self) -> None:
+        self.thread_manager.request_stop("transport.ipc")
         self._stop_event.set()
         self._ready.clear()
         server, self.socket = self.socket, None
         if server is not None:
             server.close()
 
-        thread, self._thread = self._thread, None
-        if thread is not None and thread is not threading.current_thread():
-            thread.join(timeout=2)
+        self._thread = None
+        self.thread_manager.join("transport.ipc", timeout=2)
 
         try:
             endpoint = json.loads(self.endpoint_file.read_text(encoding="utf-8"))

@@ -75,20 +75,29 @@ class KernelIhm:
         table = Table(title="Registre local", expand=True)
         table.add_column("Type", style="magenta")
         table.add_column("Nom", style="cyan")
-        table.add_column("PID / ID", justify="right")
+        table.add_column("PID / TID", justify="right")
         table.add_column("État", style="green")
+        table.add_column("Relances", justify="right")
         table.add_column("Souhaité")
         table.add_column("Relations", style="dim")
         table.add_column("Erreur", style="red")
 
+        entry_names = {
+            entry_id: f"{entry.get('type', '—')}/{entry.get('nom', '—')}"
+            for entry_id, entry in entries.items()
+        }
         for entry in entries.values():
             pid = entry.get("pid", entry.get("ident", "—"))
-            relations = ", ".join(entry.get("relations", [])) or "—"
+            relations = ", ".join(
+                entry_names.get(relation_id, relation_id)
+                for relation_id in entry.get("relations", [])
+            ) or "—"
             table.add_row(
                 str(entry.get("type", "—")),
                 str(entry.get("nom", "—")),
                 str(pid if pid is not None else "—"),
                 str(entry.get("state", "—")),
+                str(entry.get("restart_count", 0)),
                 str(entry.get("desired_state", "—")),
                 relations,
                 str(entry.get("last_error") or "—"),

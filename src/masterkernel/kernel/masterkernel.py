@@ -50,24 +50,34 @@ class Kernel:
         self.bus.register_handler("registry.snapshot", self._handle_registry_snapshot)
         self.bus.register_handler("kernel.shutdown", self._handle_shutdown)
 
-        self.transport = TransportIpc(self.paths.master_endpoint)
+        self.transport_entry = self.system.registre.creer_composant_runtime(
+            "transport.ipc", "transport", source="kernel",
+            parent_id=self.kernel_entry.id,
+            meta={
+                "name": "ipc.tcp_loopback",
+                "endpoint": str(self.paths.master_endpoint),
+                "protocol": "json-lines",
+            },
+        )
+
+        self.transport = TransportIpc(
+            self.paths.master_endpoint,
+            thread_manager=self.system.thread_manager,
+            parent_entry_id=self.transport_entry.id,
+        )
         self.bus.register_transport(self.transport)
 
-        self.transport_entry = RegistreEntry("transport.ipc", type_objet="transport")
-        self.transport_entry.source = self.system.app_name
-        self.transport_entry.meta.update({
-            "name": self.transport.name,
-            "endpoint": str(self.paths.master_endpoint),
-            "protocol": "json-lines",
-        })
-        self.transport_entry.set_desired(DesiredState.RUNNING)
-        self.transport_entry.set_state(EntryState.STARTING)
-        self.system.registre.ajouter(self.transport_entry)
+        self.ihm_entry = self.system.registre.creer_composant_runtime(
+            "service.ihm", "service", source="kernel",
+            parent_id=self.kernel_entry.id,
+            meta={"service": "ServiceIhm", "transport": "kernelbus"},
+        )
 
         self.ihm_service = ServiceIhm(
             self.system,
             kernel_status_provider=lambda: self._handle_status({}),
             transport_provider=self._handle_transport_status,
+            runtime_refresh=self.system.process_manager.refresh_status,
         )
         self.ihm_service.register(self.bus)
 
@@ -76,9 +86,11 @@ class Kernel:
             self.bus.start()
         except Exception as exc:
             self.transport_entry.set_state(EntryState.CRASHED, error=str(exc))
+            self.ihm_entry.set_state(EntryState.CRASHED, error=str(exc))
             self.kernel_entry.set_state(EntryState.CRASHED, error=str(exc))
             raise
         self.transport_entry.set_state(EntryState.RUNNING)
+        self.ihm_entry.set_state(EntryState.RUNNING)
         self.logger.info("Transport IPC prêt : %s", self.paths.master_endpoint)
 
     def _handle_status(self, _message: dict) -> dict:
@@ -93,11 +105,12 @@ class Kernel:
         }
 
     def _handle_registry_snapshot(self, _message: dict) -> dict:
+        self.system.process_manager.refresh_status()
         return {"entries": self.system.registre.to_dict()}
 
     def _handle_transport_status(self) -> dict:
         return {
-            "name": self.transport.name,
+            "name": "ipc.tcp_loopback",
             "endpoint": str(self.paths.master_endpoint),
             "protocol": "json-lines",
             "state": self.transport_entry.state,
@@ -107,8 +120,15 @@ class Kernel:
         data = message.get("data") or {}
         reason = data.get("reason", "ipc_shutdown")
         # Laisse le transport envoyer l'accusé de réception avant de le fermer.
-        threading.Timer(0.2, self.stop, kwargs={"reason": reason}).start()
+        self.system.thread_manager.run(
+            "kernel.shutdown", self._stop_after_reply, reason,
+            owner_name="kernel", parent_entry_id=self.kernel_entry.id,
+        )
         return {"shutdown": "accepted", "reason": reason}
+
+    def _stop_after_reply(self, reason: str) -> None:
+        self._shutdown_event.wait(0.2)
+        self.stop(reason=reason)
 
     def run(self) -> int:
         self.running = True
@@ -122,6 +142,8 @@ class Kernel:
             self.system.config_manager.controle_maj_configuration,
             self,
             self._shutdown_event,
+            owner_name="kernel",
+            parent_entry_id=self.kernel_entry.id,
         )
 
         try:
@@ -141,7 +163,9 @@ class Kernel:
         self.logger.info("Arrêt demandé : %s", reason)
         self.running = False
         self._shutdown_event.set()
+        self.system.thread_manager.request_stop_owner("kernel")
         self.system.en_cours_clavier = False
+        self.kernel_entry.set_desired(DesiredState.STOPPED)
         self.kernel_entry.set_state(EntryState.STOPPING)
         self.kernel_entry.meta.update({"running": False, "stopping": True})
 
@@ -151,7 +175,10 @@ class Kernel:
             self.logger.exception("Erreur pendant l'arrêt des processus enfants")
 
         self.bus.stop()
+        self.transport_entry.set_desired(DesiredState.STOPPED)
         self.transport_entry.set_state(EntryState.STOPPED)
+        self.ihm_entry.set_desired(DesiredState.STOPPED)
+        self.ihm_entry.set_state(EntryState.STOPPED)
         try:
             self.system.thread_manager.join_all()
         except Exception:

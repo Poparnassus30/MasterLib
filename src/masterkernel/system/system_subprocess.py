@@ -15,6 +15,7 @@ class ManagerSubprocess:
     def __init__(self, system_ref):
         self.system = system_ref
         self.process_registry = {}  # Clé : nom du module, Valeur : Popen
+        self.entry_registry = {}
 
     def run(self, name: str, chemin_module: str = "modules", terminal_visible: bool = False):
         """
@@ -33,6 +34,7 @@ class ManagerSubprocess:
                 self.system.logger.warning(f"[⚠️] Processus '{name}' enregistré mais terminé — relancement autorisé.")
         
         #chemin du script
+        entry = None
         try:
             if os.path.isabs(chemin_module):
                 base_path = chemin_module
@@ -47,10 +49,11 @@ class ManagerSubprocess:
             
             # Creation d'une entrée dans le registre global
             entry = self.system.registre.creer_subprocess(
-                nom = name,
-                chemin_exec = chemin_script,
-                terminal = terminal_visible
+                nom=name,
+                chemin_exec=chemin_script,
+                terminal=terminal_visible,
             )
+            self.entry_registry[name] = entry
             
             # lancement du subprocess
             if terminal_visible:
@@ -65,8 +68,13 @@ class ManagerSubprocess:
             
 
             # Mise à jour de l'entrée dans le registre
-            entry.pid = proc.pid 
+            entry.pid = proc.pid
             entry.en_cours = True
+            entry.set_desired("RUNNING")
+            entry.set_state("RUNNING")
+            entry.meta["manager_pid"] = proc.pid
+            self.process_registry[name] = proc
+            self.entry_registry[name] = entry
 
             #Attente confirmation socket
             self.system.logger.info(f"[⏳] Attente de confirmation via socket pour '{name}'...")
@@ -76,6 +84,7 @@ class ManagerSubprocess:
             true_pid = self._obtenir_pid_via_socket(name)
             if true_pid:
                 entry.pid = int(true_pid)
+                entry.meta["pid_module"] = int(true_pid)
                 self.system.logger.info(f"[🔎] PID réel reçu via socket : {true_pid}")
             else:
                 self.system.logger.warning(f"[❌] Impossible d’obtenir le PID réel de '{name}' via socket.")
@@ -90,43 +99,47 @@ class ManagerSubprocess:
             """
 
             # ✅ enregistrement du processus dans le registre
-            self.process_registry[name] = proc
             self.system.logger.debug(f"[🧾] Processus '{name}' enregistré avec PID {proc.pid}")
 
         except Exception as e:
+            if entry is not None:
+                entry.set_state("CRASHED", error=str(e))
+                entry.en_cours = False
             self.system.logger.error(f"[❌] Erreur au lancement de '{name}' : {e}")
             self.system.logger.error(f"[📋] Trace complète :\n{traceback.format_exc()}")
 
     def stop(self, name: str):
-        """Arrête un subprocess identifié par nom."""
+        """Arrête un subprocess sans effacer son historique du registre."""
         proc = self.process_registry.get(name)
-        entry = self.system.registre.get_by_name(name, type_objet="subprocess")
-
-        # Etape 1: Tuer le PID du module.py
+        entry = self.entry_registry.get(name)
         if entry:
-            pid_reel = entry.meta.get("pid_module")
-            if pid_reel:
+            entry.set_desired("STOPPED")
+            if proc and proc.poll() is None:
+                entry.set_state("STOPPING")
+
+        try:
+            if entry and entry.meta.get("pid_module"):
                 try:
-                    os.kill(int(pid_reel), signal.SIGTERM)
-                    self.system.logger.info(f"[🛑] Module '{name}' (PID {pid_reel}) arrêté proprement.")
-                except Exception as e:
-                    self.system.logger.warning(f"[❌] Échec arrêt PID réel {pid_reel} : {e}")
-
-        # Etape 2: Tuer le PID du terminal qui execute le PID du module.py
-        if proc and self.is_alive(name):
-            try:
-                proc.terminal()
-                proc.wait(timeout=5)
-                self.system.logger.info(f"[🛑] Processus '{name}' terminé proprement.")
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                self.system.logger.warning(f"[💀] Processus '{name}' tué brutalement.")
-        else:
-            self.system.logger.warning(f"[⚠️] Aucun processus actif nommé '{name}' à arrêter.")
-
-        self.process_registry.pop(name, None)
-
-        self.system.registre.supprimer(name)  # en plus du pop de process_registry
+                    os.kill(int(entry.meta["pid_module"]), signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+            if proc and proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=2)
+            if entry:
+                entry.en_cours = False
+                entry.en_ligne = False
+                entry.set_state("STOPPED")
+        except Exception as exc:
+            if entry:
+                entry.set_state("CRASHED", error=str(exc))
+            self.system.logger.exception("Erreur pendant l'arrêt de '%s'", name)
+        finally:
+            self.process_registry.pop(name, None)
 
 
     def stop_all(self):
@@ -141,12 +154,24 @@ class ManagerSubprocess:
         - Cas 2 : terminal visible => vérifie si le script Python tourne via psutil
         """
         proc = self.process_registry.get(name)
+        entry = self.entry_registry.get(name)
 
         if proc:
             if proc.poll() is None:
+                if entry:
+                    entry.en_cours = True
+                    entry.set_state("RUNNING")
                 return True
-            else:
-                self.system.logger.warning(f"[⚠️] Processus '{name}' enregistré mais terminé — relancement autorisé.")
+            if entry:
+                entry.en_cours = False
+                entry.en_ligne = False
+                normal_exit = proc.returncode == 0
+                stopped_as_requested = entry.desired_state == "STOPPED"
+                entry.set_state(
+                    "STOPPED" if stopped_as_requested or normal_exit else "CRASHED",
+                    error=None if stopped_as_requested or normal_exit else f"code retour {proc.returncode}",
+                )
+            self.system.logger.warning(f"[⚠️] Processus '{name}' enregistré mais terminé.")
 
         # 💡 Vérification alternative via psutil
         for p in psutil.process_iter(['pid', 'cmdline']):
@@ -155,11 +180,20 @@ class ManagerSubprocess:
                 if cmd and any(name in part for part in cmd):
                     if self.system.python_path in cmd[0] or "python" in cmd[0]:
                         self.system.logger.debug(f"[🔍] Processus Python '{name}' toujours actif via psutil (PID {p.pid})")
+                        if entry:
+                            entry.pid = p.pid
+                            entry.en_cours = True
+                            entry.set_state("RUNNING")
                         return True
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
 
         return False
+
+    def refresh_status(self) -> None:
+        """Rafraîchit les états des processus avant la production d'un snapshot."""
+        for name in list(self.process_registry):
+            self.is_alive(name)
 
     def est_enregistre_et_vivant(self, name: str) -> bool:
         """Retourne vrai si le processus est enregistré et actif."""

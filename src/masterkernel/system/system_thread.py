@@ -1,68 +1,116 @@
 # system/system_manager_thread.py
 
 import threading
-import time
 import traceback
-from datetime import datetime
 
-from masterkernel.system.system_registre import *
+from masterkernel.system.system_registre import DesiredState, EntryState, ThreadEntry
+
 
 class ManagerThread:
+    """Gestionnaire unique des threads démarrés par MasterLib."""
+
     def __init__(self, system_ref):
         self.system = system_ref
-        self.registre = system_ref.registre  # Pour accès au registre global
-        self.threads = {}  # nom: Thread
+        self.registre = system_ref.registre
+        self.threads = {}
+        self.entries = {}
+        self._launch_counts = {}
+        self._lock = threading.RLock()
 
-    def run(self, name: str, cible, *args, **kwargs):
-        """Lance un thread avec enregistrement dans le registre."""
-        if name in self.threads and self.threads[name].is_alive():
-            self.system.logger.warning(f"[⚠️] Thread '{name}' déjà actif.")
-            return
+    def run(self, name: str, cible, *args, owner_name: str = "system",
+            parent_entry_id: str | None = None, daemon: bool = True, **kwargs):
+        """Enregistre puis démarre un thread et retourne son handle."""
+        with self._lock:
+            current = self.threads.get(name)
+            if current is not None and current.is_alive():
+                self.system.logger.warning(f"[⚠️] Thread '{name}' déjà actif.")
+                return current
 
-        def wrapper():
-            thread_obj = threading.current_thread()
+            entry = ThreadEntry(name)
+            entry.source = owner_name
+            entry.meta.update({"owner": owner_name, "thread_name": name})
+            if parent_entry_id:
+                entry.ajouter_relation(parent_entry_id)
+            entry.restart_count = self._launch_counts.get(name, 0)
+            self._launch_counts[name] = entry.restart_count + 1
+            entry.set_desired(DesiredState.RUNNING)
+            entry.set_state(EntryState.STARTING)
+            self.registre.ajouter(entry)
+            self.entries[name] = entry
 
-            # Création de l'entrée dans le registre
-            thread_entry = ThreadEntry(name)
-            thread_entry.ident = thread_obj.ident
-            thread_entry.is_daemon = thread_obj.daemon
-            thread_entry.timestamp = datetime.utcnow()
-            thread_entry.actif = True
-            self.registre.ajouter(thread_entry)
+            def wrapper():
+                entry.ident = threading.get_native_id()
+                entry.is_daemon = threading.current_thread().daemon
+                entry.heartbeat()
+                self.system.logger.info(
+                    f"[🧵] Thread '{name}' actif (ID {entry.ident}, propriétaire {owner_name})."
+                )
+                try:
+                    cible(*args, **kwargs)
+                except Exception as exc:
+                    entry.set_state(EntryState.CRASHED, error=str(exc))
+                    self.system.logger.error(f"[💥] Thread '{name}' a échoué : {exc}")
+                    self.system.logger.error(traceback.format_exc())
+                else:
+                    entry.set_state(EntryState.STOPPED)
 
-            self.system.logger.info(f"[🧵] Thread '{name}' lancé (ID {thread_entry.ident}).")
-
-
+            thread = threading.Thread(target=wrapper, name=name, daemon=daemon)
             try:
-                cible(*args, **kwargs)
-            except Exception as e:
-                self.system.logger.error(f"[💥] Thread '{name}' a échoué : {e}")
-                self.system.logger.error(traceback.format_exc())
-            finally:
-                # 🟡 Mise à jour de l'état du thread à la fin
-                thread_entry.actif = False
-                thread_entry.timestamp = datetime.utcnow()
-
-        thread = threading.Thread(target=wrapper, name=name, daemon=True)
-        thread.start()
-        self.threads[name] = thread
-        self.system.logger.info(f"[🧵] Thread '{name}' lancé.")
+                thread.start()
+            except Exception as exc:
+                entry.set_state(EntryState.CRASHED, error=str(exc))
+                raise
+            self.threads[name] = thread
+            entry.ident = thread.native_id
+            self.system.logger.info(f"[🧵] Thread '{name}' démarré (TID {entry.ident}).")
+            return thread
 
     def is_alive(self, name: str) -> bool:
-        """Vérifie si un thread nommé est actif."""
-        return name in self.threads and self.threads[name].is_alive()
+        thread = self.threads.get(name)
+        return bool(thread and thread.is_alive())
 
-    def join_all(self):
-        """Attend la fin de tous les threads vivants."""
-        for name, thread in self.threads.items():
-            if thread.is_alive():
+    def join(self, name: str, timeout: float | None = None) -> None:
+        thread = self.threads.get(name)
+        if thread and thread is not threading.current_thread():
+            thread.join(timeout=timeout)
+
+    def request_stop(self, name: str) -> None:
+        """Signale l'arrêt souhaité; le worker doit sortir coopérativement."""
+        entry = self.entries.get(name)
+        thread = self.threads.get(name)
+        if entry:
+            entry.set_desired(DesiredState.STOPPED)
+            if thread and thread.is_alive():
+                entry.set_state(EntryState.STOPPING)
+
+    def request_stop_owner(self, owner_name: str) -> None:
+        with self._lock:
+            names = [name for name, entry in self.entries.items()
+                     if entry.source == owner_name]
+        for name in names:
+            self.request_stop(name)
+
+    def join_all(self, timeout: float = 5) -> None:
+        """Attend les threads connus sans tenter de joindre le thread appelant."""
+        current = threading.current_thread()
+        with self._lock:
+            threads = list(self.threads.items())
+        for name, thread in threads:
+            if thread.is_alive() and thread is not current:
                 self.system.logger.info(f"[🕓] Attente du thread : {name}")
-                thread.join(timeout=5)
-                self.system.logger.info(f"[✅] Thread '{name}' terminé.")
+                thread.join(timeout=timeout)
+
+    def join_owner(self, owner_name: str, timeout: float = 5) -> None:
+        """Attend les threads appartenant au composant demandé."""
+        current = threading.current_thread()
+        with self._lock:
+            selected = [(name, thread) for name, thread in self.threads.items()
+                        if self.entries.get(name)
+                        and self.entries[name].source == owner_name]
+        for _name, thread in selected:
+            if thread.is_alive() and thread is not current:
+                thread.join(timeout=timeout)
 
     def list(self):
-        """Retourne un dict avec les statuts des threads."""
-        return {
-            name: "✅ actif" if t.is_alive() else "❌ terminé"
-            for name, t in self.threads.items()
-        }
+        return {name: "✅ actif" if thread.is_alive() else "❌ terminé"
+                for name, thread in self.threads.items()}
