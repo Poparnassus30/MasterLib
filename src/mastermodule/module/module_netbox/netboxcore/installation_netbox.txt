@@ -1,0 +1,14 @@
+Installation de NetBox :
+
+    # Etape_1 :
+        # Installation:
+        sudo apt update && sudo apt upgrade
+        sudo apt install -y docker.io docker-compose-plugin
+        sudo usermod -aG docker $USER
+        newgrp docker
+
+        # Controle installation:
+        docker --version
+        docker compose version
+
+

@@ -1,0 +1,284 @@
+Installation de NetBox :
+    # etape fournie par chatgpt le 07/01/2026.
+
+    # Etape_1 :
+        # Installation:
+        sudo apt update && sudo apt upgrade
+        sudo apt install -y docker.io docker-compose-plugin
+        sudo usermod -aG docker $USER
+        newgrp docker
+
+        # Controle installation:
+        docker --version
+        docker compose version
+
+        # Note :    
+            La commande suivante n'a pas fonctionner: 
+                sudo apt install -y docker.io docker-compose-plugin
+            Celle si oui:
+                sudo apt install -y docker.io
+                sudo apt install docker-compose
+
+
+        
+
+    # Etape_2 :
+        # Creation dossier
+        mkdir -p ~/lab/netbox && cd ~/lab/netbox
+        nano docker-compose.yml
+
+        # Ajouter dans le fichier:
+            services:
+                postgres:
+                    image: postgres:16-alpine
+                    environment:
+                    POSTGRES_DB: netbox
+                    POSTGRES_USER: netbox
+                    POSTGRES_PASSWORD: netbox
+                    volumes:
+                    - netbox_pg:/var/lib/postgresql/data
+
+                redis:
+                    image: redis:7-alpine
+                    volumes:
+                    - netbox_redis:/data
+
+                redis-cache:
+                    image: redis:7-alpine
+                    command: ["redis-server", "--save", "", "--appendonly", "no"]
+
+                netbox:
+                    image: netboxcommunity/netbox:latest
+                    depends_on:
+                    - postgres
+                    - redis
+                    - redis-cache
+                    ports:
+                    - "8000:8080"
+                    environment:
+                    ALLOWED_HOSTS: "*"
+                    DB_NAME: netbox
+                    DB_USER: netbox
+                    DB_PASSWORD: netbox
+                    DB_HOST: postgres
+                    REDIS_HOST: redis
+                    REDIS_CACHE_HOST: redis-cache
+                    SECRET_KEY: "dev-only-change-this-secret-key"
+                    volumes:
+                    - netbox_media:/opt/netbox/netbox/media
+
+                volumes:
+                netbox_pg:
+                netbox_redis:
+                netbox_media:
+     # Etape_3:
+        # reconneion pour le terminal, l'ajout au groupe docker ne sapplique que apres reconnexion
+            newgrp docker
+
+        # test du docker:
+            docker pas
+
+        # retour commande:
+            poparnassus@poparnassus-ThinkPad-P15-Gen-1:~/netbox-test$ docker ps
+            CONTAINER ID   IMAGE     COMMAND   CREATED   STATUS    PORTS     NAMES
+            poparnassus@poparnassus-ThinkPad-P15-Gen-1:~/netbox-test$ 
+
+        # si permission refuser, redemarrer.
+
+    # Etape_4:
+        # toujours dans le dossier de travail /netbox-test
+            cd ~/netbox-test
+            docker-compose up -d
+            docker-compose ps
+
+        # retour commande:
+            Creating network "netbox-test_default" with the default driver
+            Creating volume "netbox-test_netbox_pg" with default driver
+            Creating volume "netbox-test_netbox_redis" with default driver
+            Creating volume "netbox-test_netbox_media" with default driver
+            Pulling postgres (postgres:16-alpine)...
+            16-alpine: Pulling from library/postgres
+            1074353eec0d: Pull complete
+            d2e5feb410e8: Pull complete
+            3048a283a433: Pull complete
+            6fe79fe4410f: Pull complete
+            137ed19c6b80: Pull complete
+            97b8e529965a: Pull complete
+            6bfb940eb824: Pull complete
+            e76f2995a422: Pull complete
+            9582264a43c0: Pull complete
+            d3a0dfeb7e38: Pull complete
+            feb143896d95: Pull complete
+            Digest: sha256:23e88eb049fd5d54894d70100df61d38a49ed97909263f79d4ff4c30a5d5fca2
+            Status: Downloaded newer image for postgres:16-alpine
+            Pulling redis (redis:7-alpine)...
+            7-alpine: Pulling from library/redis
+            f637881d1138: Pull complete
+            60c57c0072ef: Pull complete
+            fc4343b4accd: Pull complete
+            380e8aa8b1fd: Pull complete
+            c70aae7b5e0d: Pull complete
+            232f7549c9b0: Pull complete
+            4f4fb700ef54: Pull complete
+            d75b3becd998: Pull complete
+            Digest: sha256:ee64a64eaab618d88051c3ade8f6352d11531fcf79d9a4818b9b183d8c1d18ba
+            Status: Downloaded newer image for redis:7-alpine
+            Pulling netbox (netboxcommunity/netbox:latest)...
+            latest: Pulling from netboxcommunity/netbox
+            20043066d3d5: Pull complete
+            75e1518e2ad0: Pull complete
+            5ca07b4c76b1: Pull complete
+            d38ad4b8c065: Pull complete
+            f528235ece88: Pull complete
+            1c26d622001c: Pull complete
+            ee20c13e8a01: Pull complete
+            8a30388f5f6f: Pull complete
+            159549ab3590: Pull complete
+            11e955fc637a: Pull complete
+            ee7f9213cb60: Pull complete
+            0b97c4e31e0b: Pull complete
+            4ee6e365ab00: Pull complete
+            3d801569ef28: Pull complete
+            69cd442b5928: Pull complete
+            4f4fb700ef54: Pull complete
+            5b23443830b2: Pull complete
+            Digest: sha256:99e6df956cf4eda822124da7d44ee9348dcf8c8e008b1a4dc349746ccb1f8f94
+            Status: Downloaded newer image for netboxcommunity/netbox:latest
+            Creating netbox-test_redis_1       ... done
+            Creating netbox-test_postgres_1    ... done
+            Creating netbox-test_redis-cache_1 ... done
+            Creating netbox-test_netbox_1      ... done
+                    Name                        Command             State             Ports           
+            --------------------------------------------------------------------------------------------
+            netbox-test_netbox_1        /usr/bin/tini -- /opt/netb    Up      0.0.0.0:8000-             
+                                        ...                                   >8080/tcp,:::8000-        
+                                                                            >8080/tcp                 
+            netbox-test_postgres_1      docker-entrypoint.sh          Up      5432/tcp                  
+                                        postgres                                                        
+            netbox-test_redis-cache_1   docker-entrypoint.sh redis    Up      6379/tcp                  
+                                        ...                                                             
+            netbox-test_redis_1         docker-entrypoint.sh redis    Up      6379/tcp                  
+                                        ...                                                             
+            poparnassus@poparnassus-ThinkPad-P15-Gen-1:~/netbox-test$ 
+
+
+    # Etape_5:
+        # Ouvrir le docker:
+            http//127.0.0.1:8000
+
+        # retour commande:
+            rien, ne s'ouvre pas
+        
+        # regarder les logs:
+            docker-compose logs --tail=200 netbox
+            docker-compose logs --tail=200 postgres
+
+        # netbox n'arrive pas a se connetcer a postgres
+        # ajout de ses ligne dans le fihier .yaml
+            environement:
+                DB_WAIT_TIMEOUT: "120"
+                DB_WAIT_DEBUG: "1"
+
+        # Redemarrage docker:
+            docker-compose down
+            docker-compose up -d
+
+        # controle des logs:
+            docker-compose logs -f netbox
+
+        # log:
+            poparnassus@poparnassus-ThinkPad-P15-Gen-1:~/netbox-test$ docker-compose logs -f netbox
+            Attaching to netbox-test_netbox_1
+            netbox_1       | 🧬 loaded config '/etc/netbox/config/configuration.py'
+            netbox_1       | 🧬 loaded config '/etc/netbox/config/extra.py'
+            netbox_1       | 🧬 loaded config '/etc/netbox/config/logging.py'
+            netbox_1       | 🧬 loaded config '/etc/netbox/config/plugins.py'
+            netbox_1       | Traceback (most recent call last):
+            netbox_1       |   File "/opt/netbox/netbox/./manage.py", line 10, in <module>
+            netbox_1       |     execute_from_command_line(sys.argv)
+            netbox_1       |   File "/opt/netbox/venv/lib/python3.12/site-packages/django/core/management/__init__.py", line 442, in execute_from_command_line
+            netbox_1       |     utility.execute()
+            netbox_1       |   File "/opt/netbox/venv/lib/python3.12/site-packages/django/core/management/__init__.py", line 436, in execute
+            netbox_1       |     self.fetch_command(subcommand).run_from_argv(self.argv)
+            netbox_1       |   File "/opt/netbox/venv/lib/python3.12/site-packages/django/core/management/base.py", line 408, in run_from_argv
+            netbox_1       |     parser = self.create_parser(argv[0], argv[1])
+            netbox_1       |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            netbox_1       |   File "/opt/netbox/venv/lib/python3.12/site-packages/django/core/management/base.py", line 371, in create_parser
+            netbox_1       |     self.add_arguments(parser)
+            netbox_1       |   File "/opt/netbox/venv/lib/python3.12/site-packages/django/core/management/commands/showmigrations.py", line 22, in add_arguments
+            netbox_1       |     choices=tuple(connections),
+            netbox_1       |             ^^^^^^^^^^^^^^^^^^
+            netbox_1       |   File "/opt/netbox/venv/lib/python3.12/site-packages/django/utils/connection.py", line 73, in __iter__
+            netbox_1       |     return iter(self.settings)
+            netbox_1       |                 ^^^^^^^^^^^^^
+            netbox_1       |   File "/opt/netbox/venv/lib/python3.12/site-packages/django/utils/functional.py", line 47, in __get__
+            netbox_1       |     res = instance.__dict__[self.name] = self.func(instance)
+            netbox_1       |                                          ^^^^^^^^^^^^^^^^^^^
+            netbox_1       |   File "/opt/netbox/venv/lib/python3.12/site-packages/django/utils/connection.py", line 45, in settings
+            netbox_1       |     self._settings = self.configure_settings(self._settings)
+            netbox_1       |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            netbox_1       |   File "/opt/netbox/venv/lib/python3.12/site-packages/django/db/utils.py", line 148, in configure_settings
+            netbox_1       |     databases = super().configure_settings(databases)
+            netbox_1       |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            netbox_1       |   File "/opt/netbox/venv/lib/python3.12/site-packages/django/utils/connection.py", line 50, in configure_settings
+            netbox_1       |     settings = getattr(django_settings, self.settings_name)
+            netbox_1       |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            netbox_1       |   File "/opt/netbox/venv/lib/python3.12/site-packages/django/conf/__init__.py", line 81, in __getattr__
+            netbox_1       |     self._setup(name)
+            netbox_1       |   File "/opt/netbox/venv/lib/python3.12/site-packages/django/conf/__init__.py", line 68, in _setup
+            netbox_1       |     self._wrapped = Settings(settings_module)
+            netbox_1       |                     ^^^^^^^^^^^^^^^^^^^^^^^^^
+            netbox_1       |   File "/opt/netbox/venv/lib/python3.12/site-packages/django/conf/__init__.py", line 166, in __init__
+            netbox_1       |     mod = importlib.import_module(self.SETTINGS_MODULE)
+            netbox_1       |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            netbox_1       |   File "/usr/lib/python3.12/importlib/__init__.py", line 90, in import_module
+            netbox_1       |     return _bootstrap._gcd_import(name[level:], package, level)
+            netbox_1       |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            netbox_1       |   File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+            netbox_1       |   File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+            netbox_1       |   File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+            netbox_1       |   File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+            netbox_1       |   File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+            netbox_1       |   File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+            netbox_1       |   File "/opt/netbox/netbox/netbox/settings.py", line 227, in <module>
+            netbox_1       |     raise ImproperlyConfigured(
+            netbox_1       | django.core.exceptions.ImproperlyConfigured: SECRET_KEY must be at least 50 characters in length. To generate a suitable key, run the following command:
+            netbox_1       |   python /opt/netbox/netbox/generate_secret_key.py
+            netbox_1       | ⏳ Waiting on DB... (0s / 30s)
+
+        # Erreur car la passkey n'a pas été changer !
+        # creation de la clef:
+            docker-compose exec netbox python /opt/netbox/netbox/generate_secret_key.py
+
+        # la clef ne se creer pas avec le generateur fournit par netbox, donc on l'a fait manuellement sous linux:
+            python3 -c "import secrets; print(secrets.token_urlsafe(64))"
+
+        # On l'a copie dans le .yaml
+
+        # On redemarre le docker:
+            docker-compose down
+            docker-compose up -d
+            docker-compose logs -f netbox
+
+        # On test : 
+            curl -I http://127.0.0.1:8000
+
+            # Note sur retour commande:
+                OK 👌 là on a la cause exacte : NetBox démarre, fait les migrations… puis crashe à cause d’un paramètre manquant lié aux API tokens v2.
+                Dans tes logs :
+                Warning au début : API_TOKEN_PEPPERS is not defined. v2 API tokens cannot be used.
+                Puis crash fatal : ValueError: API_TOKEN_PEPPERS is not defined
+                Et le conteneur sort avec code 1 → donc aucun port 8000 n’écoute.
+                👉 Conclusion : ton image NetBox essaie de créer/traiter des tokens v2, mais tu n’as pas défini API_TOKEN_PEPPERS. Il faut le définir (c’est un secret, comme SECRET_KEY).
+
+            # Correction, généré la clef API_TOKEN_PEPPERS
+                python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+            # ajouter la clef dans le .yaml
+                API_TOKEN_PEPPERS: "1:COLLE_LA_CHAINE_ICI"
+
+
+
+
+
+
+
