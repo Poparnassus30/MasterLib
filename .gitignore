@@ -1,0 +1,38 @@
+ # log
+ *.log
+
+# Configuration locale et secrets
+.env
+.env.*
+!.env.example
+config.ini
+config.local.ini
+
+# Base de données et inventaire local
+/bdd/*.json
+/bdd/*.db
+/bdd/*.sqlite
+/bdd/*.sqlite3
+/data/
+/exports/
+
+# Exports et fichiers générés
+*.csv
+*.dump
+*.bak
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Outils et éditeurs
+.pytest_cache/
+.coverage
+.vscode/
+.idea/
+*.swp
+*.tmp
+.DS_Store
